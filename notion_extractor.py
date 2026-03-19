@@ -2,10 +2,13 @@ import os
 import requests
 import json
 import re
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ================= [Notion 설정] =================
-NOTION_TOKEN = os.getenv("NOTION_API_TOKEN")
-NOTION_PAGE_ID = os.getenv("NOTION_PAGE_ID")
+NOTION_TOKEN = os.environ.get("NOTION_API_TOKEN")
+NOTION_PAGE_ID = os.environ.get("NOTION_PAGE_ID")
 # ===============================================
 
 class NotionManager:
