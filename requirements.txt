@@ -1,0 +1,9 @@
+google-generativeai
+requests
+tqdm
+python-dotenv
+beautifulsoup4
+youtube-transcript-api
+gtts
+google-cloud-texttospeech
+PyQt5
