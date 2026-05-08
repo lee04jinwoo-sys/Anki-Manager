@@ -1,9 +1,27 @@
-google-genai
-requests
-tqdm
-python-dotenv
-beautifulsoup4
-youtube-transcript-api
-gtts
-google-cloud-texttospeech
-PyQt5
+# Core Logic & API
+google-genai==1.75.0
+requests==2.33.1
+python-dotenv==1.2.2
+
+# TUI & Progress Bars
+rich==15.0.0
+tqdm==4.67.3
+
+# Data Collection
+youtube-transcript-api==1.2.4
+beautifulsoup4==4.14.3
+
+# Audio (TTS)
+google-cloud-texttospeech==2.36.0
+gTTS==2.5.4
+
+# Data Processing & Clustering
+numpy==2.4.4
+scipy==1.17.1
+scikit-learn==1.8.0
+umap-learn==0.5.12
+
+# Utilities
+pydantic==2.13.3
+Markdown==3.10.2
+tenacity==9.1.4
