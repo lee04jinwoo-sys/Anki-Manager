@@ -88,16 +88,16 @@ class InteractiveSelector:
         )
 
         # 3. Arrange Master Layout
+        main_grid = Table.grid(expand=True)
+        main_grid.add_column() # Menu column (dynamic)
+        main_grid.add_column() # Side panel column (dynamic)
+        main_grid.add_row(menu_panel, self.side_panel or Panel("No Stats"))
+
         layout = Layout()
         layout.split_column(
-            Layout(header_panel, name="header", size=3), # Fixed small size for header
-            Layout(name="main", ratio=1),
-            Layout(name="footer", size=5) # Fixed size for bottom info
-        )
-        
-        layout["main"].split_row(
-            Layout(menu_panel, name="menu", ratio=6),
-            Layout(self.side_panel or Panel("No Stats"), name="side", ratio=4)
+            Layout(header_panel, name="header", size=3),
+            Layout(main_grid, name="main", ratio=1),
+            Layout(name="footer", size=5)
         )
         
         if self.bottom_panel:

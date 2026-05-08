@@ -281,33 +281,23 @@ def build_dashboard_panel():
 def build_system_info_panel():
     from config import SENTENCE_SELECTOR_MODEL, ANKI_URL, CURRENT_TARGET, OBSIDIAN_VAULT_PATH
     
-    # Left: Core Status
-    status_table = Table.grid(expand=True)
-    status_table.add_column(ratio=1)
-    status_table.add_column(ratio=1)
+    grid = Table.grid(expand=True)
+    grid.add_column(ratio=2) # AI
+    grid.add_column(ratio=2) # Anki
+    grid.add_column(ratio=3) # Vault
+    grid.add_column(ratio=3) # Keys
     
-    ai_status = f"[bold cyan]AI:[/] {SENTENCE_SELECTOR_MODEL}"
-    anki_status = f"[bold green]Anki:[/] {CURRENT_TARGET} ({ANKI_URL.split('//')[-1]})"
-    vault_status = f"[bold magenta]Vault:[/] {'...'+OBSIDIAN_VAULT_PATH[-25:] if len(OBSIDIAN_VAULT_PATH)>25 else OBSIDIAN_VAULT_PATH}"
+    ai = f"[cyan]AI:[/] {SENTENCE_SELECTOR_MODEL.split('-')[1]}" # Compact name
+    anki = f"[green]Anki:[/] {CURRENT_TARGET}"
+    vault = f"[magenta]Vault:[/] {OBSIDIAN_VAULT_PATH[-15:]}"
+    keys = "[yellow]Shortcuts:[/] Q:Quit | Enter:Select"
+
+    grid.add_row(ai, anki, vault, keys)
     
-    status_table.add_row(ai_status, anki_status)
-    status_table.add_row(vault_status, "[dim grey50]System Status: Online[/]")
-
-    # Right: Shortcuts
-    shortcuts = Text.from_markup(
-        "[bold yellow]Shortcuts:[/] [white]↑↓: Move | Enter: Select | Q/ㅂ: Quit | C/ㅊ: Done[/]",
-        justify="right"
-    )
-
-    full_grid = Table.grid(expand=True)
-    full_grid.add_column(ratio=7)
-    full_grid.add_column(ratio=3)
-    full_grid.add_row(status_table, shortcuts)
-
     return Panel(
-        full_grid,
-        title="[bold white]System Info & Control[/]",
-        border_style="grey37",
+        grid,
+        title="[bold white]System Info[/]",
+        border_style="bright_blue",
         padding=(0, 1)
     )
 

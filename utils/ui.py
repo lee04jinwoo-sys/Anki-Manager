@@ -22,7 +22,8 @@ class UI:
         console.print(Panel(
             Text(title, justify="center", style="bold white"),
             subtitle="[bold grey50]v2.5.0[/]",
-            border_style="bright_blue"
+            border_style="bright_blue",
+            expand=True
         ))
 
     @staticmethod
