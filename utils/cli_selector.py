@@ -7,6 +7,7 @@ from rich.console import Console, Group
 from rich.text import Text
 from rich.panel import Panel
 from rich.layout import Layout
+from rich.columns import Columns
 
 class InteractiveSelector:
     def __init__(self, items, title="Select Items", help_text=None, multi_select=True, side_panel=None, bottom_panel=None):
@@ -18,7 +19,7 @@ class InteractiveSelector:
         if help_text:
             self.help_text = help_text
         else:
-            self.help_text = "Move: ↑/↓ | Select: Space/Enter | Finish: C | Cancel: Q" if multi_select else "Move: ↑/↓ | Select: Enter | Cancel: Q"
+            self.help_text = "Move: ↑/↓ | Select: Enter | Q: Quit" if not multi_select else "Move: ↑/↓ | Space: Toggle | C: Done"
         
         self.selected_index = 0
         self.states = [0] * len(items)
@@ -37,26 +38,26 @@ class InteractiveSelector:
             ch = sys.stdin.read(1)
             if ch == '\x1b':
                 ch += sys.stdin.read(2)
-            # Handle multi-byte characters for Korean IME
-            elif ord(ch) >= 128:
-                # If a Korean character starts, read the full sequence
-                # (Simplification: just return the first byte or full char if possible)
-                # In most terminal raw modes, 'ㅂ' comes as a sequence. 
-                # Let's map common Korean keys manually by their behavior if needed.
-                pass
         finally:
             termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
         return ch
 
     def _build_full_layout(self):
-        # 1. Build Menu Table
+        # 1. Header (Static for consistency)
+        header_panel = Panel(
+            Text("Anki Manager CLI", justify="center", style="bold white"),
+            subtitle="[bold grey50]v2.5.0[/]",
+            border_style="bright_blue",
+            expand=True
+        )
+
+        # 2. Build Menu Table
         table = Table(box=None, show_header=False, pad_edge=False)
         table.add_column("Status", width=4)
         table.add_column("Item")
 
-        # Dynamically adjust window size based on terminal height
         term_height = self.console.height
-        window_size = max(5, term_height - 15) 
+        window_size = max(4, term_height - 15) 
         
         start = max(0, self.selected_index - window_size // 2)
         end = min(len(self.items), start + window_size)
@@ -86,15 +87,25 @@ class InteractiveSelector:
             expand=True
         )
 
-        if self.side_panel:
-            from rich.table import Table
-            grid = Table.grid(expand=True)
-            grid.add_column() # Menu
-            grid.add_column() # Stats
-            grid.add_row(menu_panel, self.side_panel)
-            return grid
+        # 3. Arrange Master Layout
+        layout = Layout()
+        layout.split_column(
+            Layout(header_panel, name="header", size=3), # Fixed small size for header
+            Layout(name="main", ratio=1),
+            Layout(name="footer", size=5) # Fixed size for bottom info
+        )
         
-        return menu_panel
+        layout["main"].split_row(
+            Layout(menu_panel, name="menu", ratio=6),
+            Layout(self.side_panel or Panel("No Stats"), name="side", ratio=4)
+        )
+        
+        if self.bottom_panel:
+            layout["footer"].update(self.bottom_panel)
+        else:
+            layout["footer"].update(Panel("System Ready", border_style="grey37"))
+
+        return layout
 
     def run(self):
         indices = self.run_indices()
@@ -109,32 +120,23 @@ class InteractiveSelector:
             while True:
                 live.update(self._build_full_layout(), refresh=True)
                 key = self._get_key()
-                
-                # Normalize keys (Add Korean equivalents)
-                # k/ㅏ: Up, j/ㅓ: Down, q/ㅂ: Quit, c/ㅊ: Confirm
                 k = key.lower()
                 
-                if key == '\x1b[A' or k == 'k' or key == 'ㅏ': # Up
+                if key == '\x1b[A' or k == 'k' or key == 'ㅏ':
                     self.selected_index = (self.selected_index - 1) % len(self.items)
-                    if not self.multi_select:
-                        self.states = [0] * len(self.items)
-                        self.states[self.selected_index] = 1
-                elif key == '\x1b[B' or k == 'j' or key == 'ㅓ': # Down
+                elif key == '\x1b[B' or k == 'j' or key == 'ㅓ':
                     self.selected_index = (self.selected_index + 1) % len(self.items)
-                    if not self.multi_select:
-                        self.states = [0] * len(self.items)
-                        self.states[self.selected_index] = 1
-                elif key in (' ', '\r'): # Space/Enter
+                elif key in (' ', '\r'):
                     if self.multi_select:
                         self.states[self.selected_index] = 1 - self.states[self.selected_index]
                     else:
                         return [self.selected_index]
-                elif k == 'c' or key == 'ㅊ': # Confirm
+                elif k == 'c' or key == 'ㅊ':
                     if self.multi_select:
                         return [i for i, s in enumerate(self.states) if s == 1]
-                elif k == 'q' or key == 'ㅂ': # Quit
+                elif k == 'q' or key == 'ㅂ':
                     return None
-                elif k in ('1','2','3','4','5','6','7','8','9'): # Number shortcuts
+                elif k in ('1','2','3','4','5','6','7','8','9'):
                     val = int(k) - 1
                     if val < len(self.items):
                         self.selected_index = val
