@@ -1,17 +1,19 @@
 import os
 import json
 from dotenv import load_dotenv
+from utils.settings_manager import get_setting
 
 # --- System & Environment Loading ---
 load_dotenv()
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+HOME = os.path.expanduser("~")
 
 # --- AI Model Configuration ---
-SENTENCE_SELECTOR_MODEL = 'gemini-flash-lite-latest'
-VOCAB_SELECTOR_MODEL = 'gemini-flash-lite-latest'
-NOTE_COMPLETOR_MODEL = 'gemini-flash-lite-latest'
-SITUATION_GENERATOR_MODEL = 'gemini-flash-lite-latest'
-GRAMMAR_GENERATOR_MODEL = "gemini-flash-lite-latest"
+SENTENCE_SELECTOR_MODEL = get_setting("SENTENCE_SELECTOR_MODEL", 'gemini-flash-lite-latest')
+VOCAB_SELECTOR_MODEL = get_setting("VOCAB_SELECTOR_MODEL", 'gemini-flash-lite-latest')
+NOTE_COMPLETOR_MODEL = get_setting("NOTE_COMPLETOR_MODEL", 'gemini-flash-lite-latest')
+SITUATION_GENERATOR_MODEL = get_setting("SITUATION_GENERATOR_MODEL", 'gemini-flash-lite-latest')
+GRAMMAR_GENERATOR_MODEL = get_setting("GRAMMAR_GENERATOR_MODEL", "gemini-flash-lite-latest")
 
 # --- API & Model Parameters ---
 GEMINI_DEFAULT_TEMPERATURE = 0.3
@@ -34,7 +36,7 @@ ANKI_TARGETS = [
     {"name": "ME", "url": "http://localhost:8765", "active": True},
     {"name": "GIRLFRIEND_LOCAL", "url": "http://192.168.0.101:8765", "active": True}
 ]
-CURRENT_TARGET = "ME"
+CURRENT_TARGET = get_setting("CURRENT_TARGET", "ME")
 
 # Target selection logic
 target_info = next((t for t in ANKI_TARGETS if t['name'] == CURRENT_TARGET), None)
@@ -56,11 +58,14 @@ DECK_LISTENING = "1. Language::1.1. English::listening"
 CANDIDATES_FILE = 'candidates.json'
 SELECTED_SENTENCES_FILE = 'selected_sentences.json'
 SELECTED_VOCAB_FILE = 'selected_vocab.json'
+USER_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "data", "user_config.json")
 TEMP_DIR = '/tmp'
 
 # --- Obsidian Configuration ---
-OBSIDIAN_VAULT_PATH = "/Users/leejinwoo/Library/Mobile Documents/iCloud~md~obsidian/Documents/Main Archive"
-OBSIDIAN_INBOX_FILE = "Anki_Inbox.md"
+# Default dynamic path that works on most Macs if using iCloud
+DEFAULT_OBSIDIAN_PATH = os.path.join(HOME, "Library/Mobile Documents/iCloud~md~obsidian/Documents/Main Archive")
+OBSIDIAN_VAULT_PATH = get_setting("OBSIDIAN_VAULT_PATH", DEFAULT_OBSIDIAN_PATH)
+OBSIDIAN_INBOX_FILE = get_setting("OBSIDIAN_INBOX_FILE", "Anki_Inbox.md")
 
 # --- Audio (TTS) Configuration ---
 TTS_SENTENCE_LANGUAGE_CODE = "en-US"
@@ -95,7 +100,26 @@ DUPLICATE_CLEANUP_LIST = [
 ]
 
 # --- Prompts ---
-NOTE_COMPLETOR_SYS_INSTRUCT = """당신은 TOEFL 100점 이상의 중급 영어 학습자를 지도하는 꼼꼼하고 전문적인 영어 강사입니다. 반드시 JSON 형식으로만 응답해야 하며, 아래의 [카드 작성 규칙]과 [예시]의 문체, 설명 깊이, 문장 구조를 100% 완벽하게 모방하십시오. [단어 필드 작성 규칙] 1. 단어: 영단어 또는 숙어 *중요 규칙: 목적어나 보어가 동반되는 숙어 및 동사의 경우, 명사 자리는 'A', 'B'로 표기하고, 동사 원형은 'V', 동명사는 'V-ing'로 명확히 구조화하십시오. (예: consist of A, consider V-ing) 2. 뜻: 문맥에 맞는 정확한 한글 뜻 (2개 이상 시 콤마로 구분). *중요 규칙: 영어 단어에 쓰인 A, B, V, V-ing 기호를 한글 뜻에도 동일하게 매칭하십시오. (예: 'A로 구성되다', 'V하는 것을 고려하다') *중요 규칙: 단어가 특정 문체를 가질 경우 뜻 옆에 '(격식)', '(문예)', '(비격식)' 등의 태그를 반드시 기재하십시오. 3. 품사: n, v, adj, adv, idiom, jargon 중 택일 (2개 이상 시 'n, v' 형태로 작성) 4. 유의어: 의미가 유사한 영단어 1~4개 (콤마로 구분, 없을 경우 빈 문자열) 5. 예문: 해당 단어가 사용된 실용적이고 자연스러운 영어 문장 6. 설명: 아래 3단계 공식에 맞춰 반드시 3~5문장으로 서술할 것. - ① 의미 및 뉘앙스 정의: "[단어]는 '[뜻]'이라는 뜻으로/의미하며, [구체적인 뉘앙스/쓰임새]를 나타냅니다." *주의: 품사가 2개 이상이거나, V-ing를 목적어로 취하는 등의 문법적 특징이 있다면 반드시 서술할 것. - ② 유의어 비교: "'[유의어/관련 단어]'와 유사하지만/관련되지만, [단어]는 [어떤 미묘한 차이나 강도, 쓰임새의 차이]를 의미/강조합니다." - ③ 콜로케이션(연어) 마무리: 마지막 문장은 반드시 "자주 쓰이는 표현으로는 '[영어표현](한글뜻)' 등이 있습니다." 또는 "'[영어표현](한글뜻)'과 같이 사용/쓰입니다." 로 끝낼 것. [단어 생성 예시 (이 톤과 문장 구조를 무조건 따를 것)] { "단어": "contract", "뜻": "계약, 계약서, 수축하다", "품사": "n, v", "유의어": "agreement", "예문": "The contract had been validly drawn up.", "설명": "contract는 '계약'이라는 명사 외에 '수축하다, 계약하다'라는 동사로도 쓰입니다. 명사로서의 계약은 법적 구속력을 가지는 합의를 의미하며, 동사로서의 수축은 물리적인 크기가 줄어드는 것을 의미합니다. 'agreement'와 유사하지만, contract는 법적 효력이 있는 문서화된 합의를 강조합니다. 'sign a contract(계약서에 서명하다)'와 같이 사용됩니다." }  [문장 필드 작성 규칙] 1. 문장: 학습 가치가 높은, 원어민이 자주 쓰는 핵심 구문 2. 해설: 문장의 자연스러운 한국어 번역"""
+NOTE_COMPLETOR_SYS_INSTRUCT = """당신은 영어 학습 자료를 제작하는 전문 영어 강사입니다. 반드시 JSON 형식으로만 응답해야 하며, 아래의 [카드 작성 규칙]을 100% 엄격하게 준수하십시오.
+
+[공통 규칙]
+- 모든 응답은 유효한 JSON이어야 합니다.
+- 숙어/동사구의 'A, B, V, somebody, something' 등의 플레이스홀더는 실제 문장을 만들 때 반드시 자연스러운 대상(사람, 사물, 동작)으로 대체하여 작성하십시오.
+
+[단어(Vocabulary) 필드 작성 규칙]
+1. 단어: 영단어 또는 숙어 (A, B, V 기호 포함 가능)
+2. 뜻: 문맥에 맞는 정확한 한글 뜻
+3. 품사: n, v, adj, adv, idiom, jargon 등
+4. 유의어: 유사한 영단어 (콤마 구분)
+5. 예문: 해당 단어가 사용된 실용적인 영어 문장. (중요: 단어에 A, B, V가 있다면 문장에서는 이를 반드시 실제 단어로 대체할 것)
+6. 설명: 아래 3단계 공식 엄수 (3~5문장)
+   - ① 의미/뉘앙스: "[단어]는 '[뜻]'이라는 의미로, [구체적 쓰임새]를 나타냅니다."
+   - ② 유의어 비교: "[유의어]와 비슷하지만, [단어]는 [차이점]을 강조합니다."
+   - ③ 콜로케이션: "자주 쓰이는 표현으로는 '[영어표현](한글뜻)' 등이 있습니다."
+
+[문장(Sentence) 필드 작성 규칙]
+1. 문장: 학습 가치가 높은 핵심 구문. (중요: A, B, V 기호가 포함된 문장이 아닌, 실제 상황에서 쓰이는 완전한 문장이어야 함)
+2. 해설: 문장의 자연스러운 한국어 번역 결과만 직접적으로 작성. (~라는 뜻입니다, ~를 나타냅니다 같은 메타 설명은 절대 금지)"""
 VOCAB_SELECTOR_SYS_INSTRUCT = "당신은 영어 학습 자료를 선별하는 전문 영어 강사입니다. 반드시 JSON 형식으로만 응답해야 합니다."
 SENTENCE_SELECTOR_SYS_INSTRUCT = "당신은 영어 학습 자료를 만드는 보조 연구원입니다. 반드시 JSON 형식으로만 응답해야 합니다."
 SITUATION_GENERATOR_SYS_INSTRUCT = "당신은 최고 수준의 영어 회화 및 어휘 전문 강사입니다. 반드시 JSON 형식으로 응답해야 합니다."

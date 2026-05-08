@@ -32,8 +32,12 @@ def get_deck_stats(pbar=None, fast_mode=False):
             total_cards = len(AnkiConnector.invoke('findCards', query=f'"deck:{name}"'))
             # 3. Reviews today
             reviews_today = len(AnkiConnector.invoke('findCards', query=f'"deck:{name}" rated:1'))
+            # 4. Due cards
+            due_cards = len(AnkiConnector.invoke('findCards', query=f'"deck:{name}" is:due'))
+            # 5. Learning cards
+            learn_cards = len(AnkiConnector.invoke('findCards', query=f'"deck:{name}" is:learn'))
             
-            # 4. Daily new limit & Exhaust days
+            # 6. Daily new limit & Exhaust days
             new_per_day = 0
             exhaust_days = "∞"
             try:
@@ -51,6 +55,8 @@ def get_deck_stats(pbar=None, fast_mode=False):
                 "new": new_cards,
                 "total": total_cards,
                 "reviews_today": reviews_today,
+                "due": due_cards,
+                "learn": learn_cards,
                 "new_per_day": new_per_day,
                 "exhaust_days": exhaust_days
             }

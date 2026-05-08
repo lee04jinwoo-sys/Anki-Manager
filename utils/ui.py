@@ -19,12 +19,17 @@ class UI:
 
     @staticmethod
     def header(title="Anki Manager CLI"):
-        console.print(Panel(
+        console.print(UI.make_header(title))
+
+    @staticmethod
+    def make_header(title="Anki Manager CLI"):
+        return Panel(
             Text(title, justify="center", style="bold white"),
             subtitle="[bold grey50]v2.5.0[/]",
-            border_style="bright_blue",
+            border_style="bright_cyan",
+            padding=0,
             expand=True
-        ))
+        )
 
     @staticmethod
     def subheader(title):

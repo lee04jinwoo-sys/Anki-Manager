@@ -2,11 +2,10 @@ import json
 import os
 import re
 import time
+import random
 import numpy as np
-import umap
 from google import genai
 from google.genai import types
-from sklearn.cluster import HDBSCAN
 from sklearn.preprocessing import normalize
 from dotenv import load_dotenv
 from tqdm import tqdm
@@ -18,9 +17,12 @@ from config import MODEL_VOCAB, USER_CONFIG_PATH
 from integrations.anki_connect import AnkiConnector
 from utils.synonym_sync import run_synonym_sync
 
-# Embedding model
-EMBEDDING_MODEL = "text-embedding-004"
-CACHE_FILE = os.path.join(os.path.dirname(USER_CONFIG_PATH), 'embeddings_cache_v2.json')
+# --- Verified Configuration ---
+EMBEDDING_MODEL = "models/gemini-embedding-001"
+CACHE_FILE = os.path.join(os.path.dirname(USER_CONFIG_PATH), 'embeddings_cache_v3.json')
+CW_THRESHOLD = 0.90
+WEIGHT_WORD = 0.5
+WEIGHT_MEANING = 0.5
 
 class SynonymClusterer:
     def __init__(self, pbar=None):
@@ -41,51 +43,18 @@ class SynonymClusterer:
             json.dump(self.cache, f, ensure_ascii=False, indent=2)
 
     def _get_embeddings_batch(self, texts):
-        """Fetches embeddings for a batch of texts. Returns a list of vectors."""
         try:
-            # Batch embedding call
             response = self.client.models.embed_content(
                 model=EMBEDDING_MODEL,
                 contents=texts,
                 config=types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT", output_dimensionality=768)
             )
-            
-            embeddings = [e.values for e in response.embeddings]
-            
-            # If the response doesn't match the request size, fall back to individual calls for this batch
-            if len(embeddings) != len(texts):
-                print(f"⚠️ 배치 응답 불일치 ({len(embeddings)}/{len(texts)}). 개별 요청으로 전환합니다...")
-                return self._get_embeddings_individual(texts)
-                
-            return embeddings
+            return [e.values for e in response.embeddings]
         except Exception as e:
-            print(f"⚠️ 배치 요청 에러: {e}. 개별 요청으로 전환합니다...")
-            return self._get_embeddings_individual(texts)
-
-    def _get_embeddings_individual(self, texts):
-        """Fall back to processing one by one if batch fails."""
-        results = []
-        for t in texts:
-            try:
-                response = self.client.models.embed_content(
-                    model=EMBEDDING_MODEL,
-                    contents=t,
-                    config=types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT", output_dimensionality=768)
-                )
-                if hasattr(response, 'embeddings') and response.embeddings:
-                    results.append(response.embeddings[0].values)
-                elif hasattr(response, 'embedding') and response.embedding:
-                    results.append(response.embedding.values)
-                else:
-                    results.append(None)
-            except Exception as e:
-                print(f"❌ 개별 벡터 변환 실패 ('{t[:10]}...'): {e}")
-                results.append(None)
-            time.sleep(0.05)
-        return results
+            print(f"⚠️ API 요청 에러: {e}")
+            return [None] * len(texts)
 
     def _get_vectors_for_data(self, data_list, type_key):
-        """Fetches and caches embeddings for a list of strings."""
         texts_to_embed = list(set([item[type_key] for item in data_list if item[type_key] and item[type_key] not in self.cache]))
         
         if texts_to_embed:
@@ -94,119 +63,91 @@ class SynonymClusterer:
             for i in tqdm(range(0, len(texts_to_embed), batch_size)):
                 batch = texts_to_embed[i:i+batch_size]
                 embeddings = self._get_embeddings_batch(batch)
-                
                 if embeddings:
                     for text, vector in zip(batch, embeddings):
-                        if vector:
-                            self.cache[text] = vector
-                
+                        if vector: self.cache[text] = vector
                 if i % 200 == 0: self._save_cache()
                 time.sleep(0.1)
             self._save_cache()
         
         vectors = []
         zero_vector = [0.0] * 768
-        missing_count = 0
-        
         for item in data_list:
             v = self.cache.get(item[type_key])
-            if v is None or len(v) != 768:
-                vectors.append(zero_vector)
-                missing_count += 1
-            else:
-                vectors.append(v)
-        
-        if missing_count > 0:
-            print(f"⚠️ {type_key}: {missing_count}/{len(data_list)}개의 항목에 대한 벡터가 없어 0으로 대체되었습니다.")
-            
+            vectors.append(v if v and len(v) == 768 else zero_vector)
         return np.array(vectors, dtype=np.float32)
 
+    def _run_chinese_whispers(self, vectors, threshold=CW_THRESHOLD, iterations=15):
+        """Graphs-based clustering for high-quality synonym grouping."""
+        num_nodes = len(vectors)
+        norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+        norms[norms == 0] = 1.0
+        v_norm = vectors / norms
+        
+        # Dot product for cosine similarity
+        sim_matrix = np.dot(v_norm, v_norm.T)
+        labels = list(range(num_nodes))
+        
+        for it in range(iterations):
+            order = list(range(num_nodes))
+            random.shuffle(order)
+            changes = 0
+            for i in order:
+                neighbors = np.where(sim_matrix[i] > threshold)[0]
+                if len(neighbors) == 0: continue
+                
+                weights = {}
+                for j in neighbors:
+                    if i == j: continue
+                    l = labels[j]
+                    weights[l] = weights.get(l, 0) + sim_matrix[i, j]
+                
+                if not weights: continue
+                max_label = max(weights, key=weights.get)
+                if labels[i] != max_label:
+                    labels[i] = max_label
+                    changes += 1
+            if changes == 0: break
+        return np.array(labels)
+
     def process_all_vocab(self):
-        print(f"🔍 Anki에서 '{MODEL_VOCAB}' 노트를 가져오는 중...")
+        print(f"🔍 Anki에서 '{MODEL_VOCAB}' 데이터를 가져오는 중...")
         note_ids = AnkiConnector.find_notes(query=f'"note:{MODEL_VOCAB}"')
         if not note_ids: return []
         notes_info = AnkiConnector.get_notes_info(note_ids)
         
-        normal_data = []
-        idiom_data = []
-
+        normal_data, idiom_data = [], []
         for note in notes_info:
             word = re.sub('<[^<]+?>', '', note['fields']['단어']['value']).strip()
             meaning = re.sub('<[^<]+?>', '', note['fields']['뜻']['value']).strip()
             pos = re.sub('<[^<]+?>', '', note['fields'].get('품사', {}).get('value', '')).lower().strip()
             pos_tags = [p.strip() for p in re.split(r'[,/]', pos) if p.strip()]
             
-            item = {
-                "id": note['noteId'],
-                "word": word,
-                "meaning": meaning,
-                "pos": pos_tags
-            }
-            
-            if " " in word:
-                idiom_data.append(item)
-            else:
-                normal_data.append(item)
+            item = {"id": note['noteId'], "word": word, "meaning": meaning, "pos": pos_tags}
+            if " " in word: idiom_data.append(item)
+            else: normal_data.append(item)
 
         final_clusters = []
-
-        # 1. Normal Word Clustering (Weighted Concat)
-        if normal_data:
-            print(f"\n📦 일반 단어 클러스터링 시작 ({len(normal_data)}개)")
-            word_vectors = self._get_vectors_for_data(normal_data, "word")
-            meaning_vectors = self._get_vectors_for_data(normal_data, "meaning")
+        for label, data in [("일반 단어", normal_data), ("이디엄", idiom_data)]:
+            if not data: continue
+            print(f"\n📦 {label} 클러스터링 시작 ({len(data)}개)")
+            v_word = normalize(self._get_vectors_for_data(data, "word")) * WEIGHT_WORD
+            v_mean = normalize(self._get_vectors_for_data(data, "meaning")) * WEIGHT_MEANING
+            combined = np.concatenate([v_word, v_mean], axis=1)
             
-            # Normalize and Weight
-            word_vectors = normalize(word_vectors) * 0.4
-            meaning_vectors = normalize(meaning_vectors) * 0.6
-            combined_vectors = np.concatenate([word_vectors, meaning_vectors], axis=1)
-            
-            labels = self._run_clustering_pipeline(combined_vectors)
-            final_clusters.extend(self._post_process_labels(normal_data, labels))
-
-        # 2. Idiom Clustering (Meaning Only)
-        if idiom_data:
-            print(f"\n📦 이디엄 클러스터링 시작 ({len(idiom_data)}개)")
-            meaning_vectors = self._get_vectors_for_data(idiom_data, "meaning")
-            combined_vectors = normalize(meaning_vectors)
-            
-            labels = self._run_clustering_pipeline(combined_vectors)
-            final_clusters.extend(self._post_process_labels(idiom_data, labels))
-
+            labels = self._run_chinese_whispers(combined)
+            final_clusters.extend(self._post_process_labels(data, labels))
         return final_clusters
-
-    def _run_clustering_pipeline(self, vectors):
-        # 1. Dimensionality Reduction with UMAP
-        print(f"📉 UMAP 차원 축소 중 (50차원)...")
-        reducer = umap.UMAP(n_components=50, metric='cosine', random_state=42)
-        reduced_vectors = reducer.fit_transform(vectors)
-
-        # 2. Clustering with HDBSCAN
-        print(f"🧬 HDBSCAN 클러스터링 실행 중...")
-        clusterer = HDBSCAN(min_cluster_size=2, min_samples=5, metric='cosine')
-        labels = clusterer.fit_predict(reduced_vectors)
-        
-        unique_labels = set(labels)
-        if -1 in unique_labels: unique_labels.remove(-1)
-        
-        if unique_labels:
-            counts = [np.sum(labels == l) for l in unique_labels]
-            max_size = max(counts)
-            print(f"📊 클러스터 분석: 총 {len(unique_labels)}개 그룹 발견 (최대 크기: {max_size})")
-        else:
-            print(f"📊 클러스터 분석: 그룹이 발견되지 않았습니다.")
-            
-        return labels
 
     def _post_process_labels(self, data, labels):
         clusters = {}
         for i, label in enumerate(labels):
-            if label == -1: continue 
             if label not in clusters: clusters[label] = []
             clusters[label].append(data[i])
         
         refined = []
-        for label, members in clusters.items():
+        for members in clusters.values():
+            if len(members) < 2: continue
             sub_groups = self._split_by_pos(members)
             for sg in sub_groups:
                 if len(sg) >= 2:
@@ -214,28 +155,26 @@ class SynonymClusterer:
         return refined
 
     def _split_by_pos(self, members):
-        if not members: return []
         remaining = list(members)
         sub_groups = []
         while remaining:
-            current_group = [remaining.pop(0)]
+            curr = [remaining.pop(0)]
             changed = True
             while changed:
                 changed = False
                 for i in range(len(remaining)-1, -1, -1):
-                    item = remaining[i]
-                    if any(set(item['pos']) & set(m['pos']) for m in current_group):
-                        current_group.append(remaining.pop(i))
+                    if any(set(remaining[i]['pos']) & set(m['pos']) for m in curr):
+                        curr.append(remaining.pop(i))
                         changed = True
-            sub_groups.append(current_group)
+            sub_groups.append(curr)
         return sub_groups
 
     def generate_report(self, clusters, filename='synonym_clusters.md'):
         report_path = os.path.join(os.path.dirname(USER_CONFIG_PATH), filename)
         with open(report_path, 'w', encoding='utf-8') as f:
-            f.write("# Anki Synonym Clusters Report (HDBSCAN)\n\n")
-            f.write(f"Generated at: {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-            f.write(f"Total groups found: {len(clusters)}\n\n")
+            f.write(f"# Anki Synonym Clusters Report (CW)\n\n")
+            f.write(f"Generated at: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"Total groups: {len(clusters)}\n\n")
             for i, group in enumerate(clusters):
                 f.write(f"### Group {i+1}\n")
                 for item in group:
@@ -243,16 +182,23 @@ class SynonymClusterer:
                 f.write("\n")
         return report_path
 
-def run_clustering():
-    clusterer = SynonymClusterer()
+def run_clustering(pbar=None, step_points=0):
+    clusterer = SynonymClusterer(pbar=pbar)
     raw_clusters = clusterer.process_all_vocab()
     if not raw_clusters:
-        print("ℹ️ 유의어 그룹을 찾지 못했습니다.")
+        if pbar and step_points > 0: pbar.update(step_points)
+        else: print("ℹ️ 유의어 그룹을 찾지 못했습니다.")
         return
+    
     report_path = clusterer.generate_report(raw_clusters)
-    print(f"✅ 클러스터링 완료! 보고서: {report_path}")
-    print("\n🚀 유의어를 안키 카드에 반영합니다...")
+    if pbar: pbar.write(f"✅ 클러스터링 완료! 보고서: {report_path}")
+    else: print(f"✅ 클러스터링 완료! 보고서: {report_path}")
+    
+    if pbar: pbar.set_description("Syncing Synonyms to Anki...")
     run_synonym_sync(clusters=raw_clusters)
+    
+    if pbar and step_points > 0:
+        pbar.update(step_points)
 
 if __name__ == "__main__":
     run_clustering()
