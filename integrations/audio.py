@@ -44,7 +44,10 @@ class AnkiTTSFiller:
             selected_voice_name = random.choice(VOICE_LIST)
             lang_code = "-".join(selected_voice_name.split("-")[:2])
             voice = texttospeech.VoiceSelectionParams(language_code=lang_code, name=selected_voice_name)
-            audio_config = texttospeech.AudioConfig(audio_encoding=texttospeech.AudioEncoding.MP3)
+            audio_config = texttospeech.AudioConfig(
+                audio_encoding=texttospeech.AudioEncoding.MP3,
+                speaking_rate=1.1
+            )
             response = tts_client.synthesize_speech(input=synthesis_input, voice=voice, audio_config=audio_config)
             
             # 고유한 파일명 생성 (uuid 추가)

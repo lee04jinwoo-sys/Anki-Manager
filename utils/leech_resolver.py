@@ -3,6 +3,8 @@ from integrations.anki_connect import AnkiConnector
 from utils.ui import UI
 from utils.cli_selector import InteractiveSelector
 from core.completer import NoteCompleter
+from integrations.audio import AnkiTTSFiller
+from utils.organizer import run_organizer
 from config import MODEL_VOCAB, MODEL_SENTENCE, DECK_SENTENCE
 
 class LeechResolver:
@@ -147,20 +149,16 @@ class LeechResolver:
 
         # Add to Anki
         added_count = 0
-        card_ids_to_schedule = []
         
         for res in results:
             if not res.get("문장"): continue
             try:
                 # Add note to Anki
-                nid = AnkiConnector.add_note(DECK_SENTENCE, MODEL_SENTENCE, {
+                AnkiConnector.add_note(DECK_SENTENCE, MODEL_SENTENCE, {
                     "문장": res["문장"],
                     "해설": res["해설"]
                 }, tags=["leech_reinforcement"])
                 
-                # Get card IDs for this note to reschedule
-                cids = AnkiConnector.invoke("findCards", query=f"nid:{nid}")
-                card_ids_to_schedule.extend(cids)
                 added_count += 1
             except Exception as e:
                 if "duplicate" in str(e).lower():
@@ -168,13 +166,13 @@ class LeechResolver:
                 else:
                     UI.error(f"Error: {e}")
 
-        if card_ids_to_schedule:
-            # Set due to tomorrow (1 day from now)
-            try:
-                AnkiConnector.invoke("setDueDate", cards=card_ids_to_schedule, days="1")
-                UI.success(f"{added_count}개의 문장이 추가되었으며 내일 학습으로 예약되었습니다.")
-            except Exception as e:
-                UI.warn(f"문장은 추가되었으나 스케줄링에 실패했습니다: {e}")
+        if added_count > 0:
+            UI.success(f"{added_count}개의 새로운 문장 카드가 추가되었습니다.")
+            
+            # Add audio and organize cards
+            with UI.wait("오디오 추가 및 카드 정리 중..."):
+                AnkiTTSFiller.run_audio_addition()
+                run_organizer()
         else:
             UI.info("추가된 새로운 문장이 없습니다.")
 
