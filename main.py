@@ -22,6 +22,7 @@ from utils.cleaner import clean_duplicates, find_leeches
 from utils.organizer import run_organizer
 from utils.cluster import run_clustering
 from utils.leech_resolver import LeechResolver
+from utils.pos_automator import run_pos_automation
 from utils.ui import UI
 from utils.cli_selector import InteractiveSelector
 from utils.design_manager import export_design, import_design
@@ -170,9 +171,10 @@ def menu_organize_notes():
         options = [
             ("1", "1. 누락된 오디오 채우기"),
             ("2", "2. 빈 필드 자동 완성 (모든 모델)"),
-            ("3", "3. 유의어 자동 클러스터링 (AI)"),
-            ("4", "4. 카드 자동 정리 (덱 이동)"),
-            ("5", "5. 중복 카드 제거"),
+            ("3", "3. 누락된 품사 채우기 (NLTK)"),
+            ("4", "4. 유의어 자동 클러스터링 (AI)"),
+            ("5", "5. 카드 자동 정리 (덱 이동)"),
+            ("6", "6. 중복 카드 제거"),
             ("b", "b. 메인 메뉴로 돌아가기")
         ]
         
@@ -195,14 +197,18 @@ def menu_organize_notes():
             run_universal_field_completion()
             UI.ask("계속하려면 Enter를 누르세요", default="")
         elif choice == '3':
+            UI.subheader("누락된 품사 채우기 (NLTK)")
+            run_pos_automation()
+            UI.ask("계속하려면 Enter를 누르세요", default="")
+        elif choice == '4':
             UI.subheader("유의어 자동 클러스터링")
             run_clustering()
             UI.ask("계속하려면 Enter를 누르세요", default="")
-        elif choice == '4':
+        elif choice == '5':
             UI.subheader("카드 자동 정리")
             run_organizer()
             UI.ask("계속하려면 Enter를 누르세요", default="")
-        elif choice == '5':
+        elif choice == '6':
             UI.subheader("중복 카드 제거")
             clean_duplicates()
             UI.success("중복 카드가 제거되었습니다.")

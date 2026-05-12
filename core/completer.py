@@ -15,6 +15,7 @@ from config import (
     DECK_VOCAB, MODEL_VOCAB, NOTE_ENRICH_PROGRESS_RATIO
 )
 from integrations.anki_connect import AnkiConnector
+from utils.pos_automator import get_simple_pos, setup_nltk
 
 def _print(pbar, *args, **kwargs):
     if pbar:
@@ -190,6 +191,16 @@ def run_universal_field_completion(pbar=None):
             main_field = config["all_fields"][0]
             main_val = fields.get(main_field, "")
             
+            # [추가] Vocabulary 모델인 경우 품사 필드 우선 처리
+            if model_name == MODEL_VOCAB and "품사" in missing_fields:
+                pos_tag = get_simple_pos(main_val)
+                if pos_tag:
+                    AnkiConnector.update_note_fields(note_id, {"품사": pos_tag})
+                    missing_fields.remove("품사")
+                    _print(pbar, f"✅ NLTK 품사 보강: {main_val[:20]} -> {pos_tag}")
+                    if not missing_fields: # 더 이상 채울 필드가 없으면 종료
+                        return True
+            
             _print(pbar, f"⏳ 보강 중: {main_val[:30]}... ({', '.join(missing_fields)} 필드)")
             
             current_data = {f: fields[f] for f in config["all_fields"] if fields.get(f, "").strip()}
@@ -251,11 +262,19 @@ def run_note_completion(sentences_data, vocab_data, pbar=None, step_points=0, in
                 _print(pbar, f"❌ 추가 실패: {e}")
         if pbar: pbar.update(step_amt)
             
+    # Ensure NLTK is ready
+    setup_nltk()
+    
     for v in enriched_v:
-        word = v.get('단어')
+        word = v.get('단어', '').strip()
+        if not word: continue
+        
+        # Override POS with NLTK logic
+        pos_tag = get_simple_pos(word)
+        
         try:
             AnkiConnector.add_note(DECK_VOCAB, MODEL_VOCAB, {
-                "단어": word, "뜻": v['뜻'], "품사": v['품사'], 
+                "단어": word, "뜻": v['뜻'], "품사": pos_tag, 
                 "유의어": v['유의어'], "예문": v['예문'], "설명": v['설명']
             })
             processed_vocab.append(word)

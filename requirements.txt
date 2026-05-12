@@ -26,3 +26,4 @@ numba
 pydantic==2.13.3
 Markdown==3.10.2
 tenacity==9.1.4
+nltk==3.9.4
