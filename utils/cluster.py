@@ -109,16 +109,31 @@ class SynonymClusterer:
         cleaned = re.sub(r'[\(\[\{].*?[\)\]\}]', '', meaning)
         placeholders = r'(?:\b[A-Z]\b|\bsb\b|\bsth\b|\bsbd\b|\bsomeone\b|\bsomething\b|\boneself\b)'
         particles = r'(?:에(?:게|서|대한|대해|관한|관하여|의)?|의|로(?:부터|서|써|대해)?|와|과|를|을|이|가|은|는|도|만|까지|부터|하고|이랑|나|이나)'
-        cleaned = re.sub(f'{placeholders}(?:\'s)?\s*{particles}?', '', cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(rf'{placeholders}(?:\x27s)?\s*{particles}?', '', cleaned, flags=re.IGNORECASE)
         v_patterns = r'(?:하는\s*것|하기|함|하도록|할|하여|해서|하면|한|했던|하려는|함에|하기를|하느라)'
-        cleaned = re.sub(f'\\bV\\b\s*{v_patterns}?', '', cleaned)
+        cleaned = re.sub(rf'\bV\b\s*{v_patterns}?', '', cleaned)
         cleaned = re.sub(r'[^가-힣a-zA-Z0-9\s,]', ' ', cleaned)
         cleaned = re.sub(f'^\\s*{particles}\\s*', '', cleaned)
         cleaned = re.sub(f'\\s*{particles}\\s*$', '', cleaned)
         cleaned = re.sub(r'\s+', ' ', cleaned).strip()
         return cleaned if len(cleaned) > 1 else meaning
 
-    def process_all_vocab(self):
+
+    def _load_clusters(self):
+        cluster_file = os.path.join(os.path.dirname(USER_CONFIG_PATH), 'synonym_clusters.json')
+        if os.path.exists(cluster_file):
+            try:
+                with open(cluster_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except: return []
+        return []
+
+    def _save_clusters(self, clusters):
+        cluster_file = os.path.join(os.path.dirname(USER_CONFIG_PATH), 'synonym_clusters.json')
+        with open(cluster_file, 'w', encoding='utf-8') as f:
+            json.dump(clusters, f, ensure_ascii=False, indent=2)
+
+    def process_all_vocab(self, full_recluster=False):
         msg = f"🔍 Anki에서 '{MODEL_VOCAB}' 노트를 가져오는 중..."
         if self.pbar: self.pbar.write(msg)
         else: print(msg)
@@ -127,6 +142,7 @@ class SynonymClusterer:
         if not note_ids: return []
         notes_info = AnkiConnector.get_notes_info(note_ids)
         
+        all_items = {}
         normal_data = []
         idiom_data = []
 
@@ -142,6 +158,7 @@ class SynonymClusterer:
                 "meaning": meaning,
                 "pos": pos_tags
             }
+            all_items[item['id']] = item
             
             if " " in word:
                 item['meaning_clean'] = self._clean_idiom_meaning(meaning)
@@ -149,30 +166,165 @@ class SynonymClusterer:
             else:
                 normal_data.append(item)
 
-        final_clusters = []
+        existing_clusters = self._load_clusters()
 
-        if normal_data:
-            msg = f"\n📦 일반 단어 클러스터링 시작 ({len(normal_data)}개)"
+        if not full_recluster and existing_clusters:
+            msg = f"⚡ 증분 클러스터링(Incremental Clustering) 실행 중..."
             if self.pbar: self.pbar.write(msg)
             else: print(msg)
-            word_vectors = self._get_vectors_for_data(normal_data, "word")
-            meaning_vectors = self._get_vectors_for_data(normal_data, "meaning")
-            word_vectors = normalize(word_vectors) * 0.2
-            meaning_vectors = normalize(meaning_vectors) * 0.8
-            combined_vectors = np.concatenate([word_vectors, meaning_vectors], axis=1)
-            labels = self._run_clustering_pipeline(combined_vectors)
-            final_clusters.extend(self._post_process_labels(normal_data, labels, combined_vectors))
+            
+            clustered_ids = set()
+            for cluster in existing_clusters:
+                for item in cluster:
+                    clustered_ids.add(item['id'])
+                    
+            # Filter out deleted notes from existing clusters
+            valid_clusters = []
+            for cluster in existing_clusters:
+                valid_cluster = [item for item in cluster if item['id'] in all_items]
+                if valid_cluster:
+                    valid_clusters.append(valid_cluster)
+            
+            existing_clusters = valid_clusters
+            
+            new_normal = [item for item in normal_data if item['id'] not in clustered_ids]
+            new_idioms = [item for item in idiom_data if item['id'] not in clustered_ids]
+            
+            had_deletions = sum(len(c) for c in existing_clusters) < len(clustered_ids)
+            
+            if not new_normal and not new_idioms and not had_deletions:
+                msg = f"✨ 새로 추가되거나 삭제된 카드가 없습니다. 기존 클러스터를 유지합니다."
+                if self.pbar: self.pbar.write(msg)
+                else: print(msg)
+                return [c for c in existing_clusters if len(c) >= 2]
+            
+            # Precompute combined vectors in bulk to avoid individual lookups in the loop
+            vector_map = {}
+            
+            # For normal data
+            if normal_data:
+                word_vectors = self._get_vectors_for_data(normal_data, "word")
+                meaning_vectors = self._get_vectors_for_data(normal_data, "meaning")
+                
+                # Normalize word vectors
+                word_norms = np.linalg.norm(word_vectors, axis=1, keepdims=True)
+                word_norms[word_norms == 0] = 1.0
+                word_vectors = (word_vectors / word_norms) * 0.2
+                
+                # Normalize meaning vectors
+                meaning_norms = np.linalg.norm(meaning_vectors, axis=1, keepdims=True)
+                meaning_norms[meaning_norms == 0] = 1.0
+                meaning_vectors = (meaning_vectors / meaning_norms) * 0.8
+                
+                combined_normal = np.concatenate([word_vectors, meaning_vectors], axis=1)
+                for item, vec in zip(normal_data, combined_normal):
+                    vector_map[item['id']] = vec
+            
+            # For idiom data
+            if idiom_data:
+                meaning_vectors_idiom = self._get_vectors_for_data(idiom_data, "meaning_clean")
+                idiom_norms = np.linalg.norm(meaning_vectors_idiom, axis=1, keepdims=True)
+                idiom_norms[idiom_norms == 0] = 1.0
+                combined_idiom = meaning_vectors_idiom / idiom_norms
+                for item, vec in zip(idiom_data, combined_idiom):
+                    vector_map[item['id']] = vec
 
-        if idiom_data:
-            msg = f"\n📦 이디엄 클러스터링 시작 ({len(idiom_data)}개)"
+            def get_combined_vector(item):
+                return vector_map.get(item['id'])
+
+            def process_incremental(new_items, is_idiom):
+                if not new_items: return
+                expected_dim = 768 if is_idiom else 1536
+                relevant_clusters = []
+                for c in existing_clusters:
+                    has_space = " " in c[0]['word']
+                    if is_idiom == has_space:
+                        relevant_clusters.append(c)
+                
+                centroids = []
+                for c in relevant_clusters:
+                    vecs = [get_combined_vector(m) for m in c if get_combined_vector(m) is not None and len(get_combined_vector(m)) == expected_dim]
+                    if vecs:
+                        centroid = np.mean(vecs, axis=0)
+                        centroid = centroid / (np.linalg.norm(centroid) or 1.0)
+                        centroids.append(centroid)
+                    else:
+                        centroids.append(np.zeros(expected_dim, dtype=np.float32))
+                
+                for item in new_items:
+                    vec = get_combined_vector(item)
+                    if vec is None or len(vec) != expected_dim:
+                        continue
+                    vec = vec / (np.linalg.norm(vec) or 1.0)
+                    
+                    best_sim = -1
+                    best_idx = -1
+                    
+                    if centroids:
+                        sims = np.dot(centroids, vec)
+                        best_idx = np.argmax(sims)
+                        best_sim = sims[best_idx]
+                        
+                    if best_sim > 0.85:
+                        relevant_clusters[best_idx].append(item)
+                        # Recompute centroid for updated cluster
+                        c_items = relevant_clusters[best_idx]
+                        vecs = [get_combined_vector(m) for m in c_items if get_combined_vector(m) is not None and len(get_combined_vector(m)) == expected_dim]
+                        if vecs:
+                            new_centroid = np.mean(vecs, axis=0)
+                            centroids[best_idx] = new_centroid / (np.linalg.norm(new_centroid) or 1.0)
+                        msg = f"  -> '{item['word']}' 유의어 그룹 편입 (유사도: {best_sim:.2f})"
+                        if self.pbar: self.pbar.write(msg)
+                        else: print(msg)
+                    else:
+                        new_cluster = [item]
+                        relevant_clusters.append(new_cluster)
+                        centroids.append(vec)
+                        existing_clusters.append(new_cluster)
+            
+            process_incremental(new_normal, is_idiom=False)
+            process_incremental(new_idioms, is_idiom=True)
+            
+            self._save_clusters(existing_clusters)
+            return [c for c in existing_clusters if len(c) >= 2]
+            
+        else:
+            msg = f"🚀 전체 클러스터링(Full Re-clustering) 실행 중..."
             if self.pbar: self.pbar.write(msg)
             else: print(msg)
-            meaning_vectors = self._get_vectors_for_data(idiom_data, "meaning_clean")
-            combined_vectors = normalize(meaning_vectors)
-            labels = self._run_clustering_pipeline(combined_vectors)
-            final_clusters.extend(self._post_process_labels(idiom_data, labels, combined_vectors))
 
-        return final_clusters
+            final_clusters = []
+
+            if normal_data:
+                msg = f"\n📦 일반 단어 클러스터링 시작 ({len(normal_data)}개)"
+                if self.pbar: self.pbar.write(msg)
+                else: print(msg)
+                word_vectors = self._get_vectors_for_data(normal_data, "word")
+                meaning_vectors = self._get_vectors_for_data(normal_data, "meaning")
+                word_vectors = normalize(word_vectors) * 0.2
+                meaning_vectors = normalize(meaning_vectors) * 0.8
+                combined_vectors = np.concatenate([word_vectors, meaning_vectors], axis=1)
+                labels = self._run_clustering_pipeline(combined_vectors)
+                final_clusters.extend(self._post_process_labels(normal_data, labels, combined_vectors))
+
+            if idiom_data:
+                msg = f"\n📦 이디엄 클러스터링 시작 ({len(idiom_data)}개)"
+                if self.pbar: self.pbar.write(msg)
+                else: print(msg)
+                meaning_vectors = self._get_vectors_for_data(idiom_data, "meaning_clean")
+                combined_vectors = normalize(meaning_vectors)
+                labels = self._run_clustering_pipeline(combined_vectors)
+                final_clusters.extend(self._post_process_labels(idiom_data, labels, combined_vectors))
+
+            # Include outliers as 1-item clusters in the saved file to prevent them from being treated as "new items" during incremental runs
+            clustered_ids = {item['id'] for cluster in final_clusters for item in cluster}
+            all_saved_clusters = list(final_clusters)
+            for item in normal_data + idiom_data:
+                if item['id'] not in clustered_ids:
+                    all_saved_clusters.append([item])
+
+            self._save_clusters(all_saved_clusters)
+            return final_clusters
 
     def _run_clustering_pipeline(self, vectors):
         msg = f"📉 UMAP 차원 축소 중 (50차원)..."
@@ -329,9 +481,11 @@ class SynonymClusterer:
                 f.write("\n")
         return report_path
 
-def run_clustering(pbar=None, step_points=0):
+def run_clustering(pbar=None, step_points=0, full_recluster=False):
     clusterer = SynonymClusterer(pbar=pbar)
-    raw_clusters = clusterer.process_all_vocab()
+    
+    old_clusters = None if full_recluster else clusterer._load_clusters()
+    raw_clusters = clusterer.process_all_vocab(full_recluster=full_recluster)
     
     if not raw_clusters:
         if pbar and step_points > 0: pbar.update(step_points)
@@ -343,7 +497,7 @@ def run_clustering(pbar=None, step_points=0):
     else: print(f"✅ 클러스터링 완료! 보고서: {report_path}")
     
     if pbar: pbar.set_description("Syncing Synonyms to Anki...")
-    run_synonym_sync(clusters=raw_clusters)
+    run_synonym_sync(clusters=raw_clusters, old_clusters=old_clusters)
     
     if pbar and step_points > 0:
         pbar.update(step_points)

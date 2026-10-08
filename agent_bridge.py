@@ -88,6 +88,11 @@ def bridge_add_items(items, enrich=True):
 
         # 2. Add to Anki
         try:
+            if "영상ID" in fields and model != MODEL_VOCAB:
+                AnkiConnector.ensure_model_fields(model, ["영상ID", "시작시간"])
+            elif model == MODEL_VOCAB:
+                fields.pop("영상ID", None)
+                fields.pop("시작시간", None)
             AnkiConnector.add_note(deck, model, fields)
             print(f"✅ Added {model}: {main_val[:30]}")
             return True
@@ -102,10 +107,18 @@ def bridge_add_items(items, enrich=True):
     with concurrent.futures.ThreadPoolExecutor(max_workers=NOTE_COMPLETOR_MAX_WORKERS) as executor:
         results = list(executor.map(process_item, items))
     
+    from utils.organizer import run_organizer
+    from utils.cleaner import clean_duplicates
+
     added_count = sum(1 for r in results if r)
     if added_count > 0:
         print(f"🔊 Generating audio for {added_count} items...")
         AnkiTTSFiller.run_audio_addition()
+        
+        print("🧹 Cleaning up duplicates and organizing cards...")
+        clean_duplicates()
+        run_organizer()
+        
         print("✨ All tasks completed successfully.")
 
 if __name__ == "__main__":

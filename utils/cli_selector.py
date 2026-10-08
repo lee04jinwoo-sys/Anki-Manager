@@ -30,67 +30,81 @@ class InteractiveSelector:
         self.console = Console()
 
     def _get_key(self):
+        import select
+        import os
         fd = sys.stdin.fileno()
         old_settings = termios.tcgetattr(fd)
         try:
-            tty.setraw(sys.stdin.fileno())
-            ch = sys.stdin.read(1)
-            if ch == '\x1b':
-                ch += sys.stdin.read(2)
+            tty.setraw(fd)
+            r, w, e = select.select([sys.stdin], [], [], 0.2)
+            if r:
+                # os.read captures the full sequence (like arrow keys) in one go
+                key = os.read(fd, 10).decode('utf-8', errors='ignore')
+                return key
+            return None
         finally:
             termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-        return ch
 
     def _build_full_layout(self):
-        # 1. Build Menu Table
-        table = Table(box=None, show_header=False, pad_edge=False)
-        table.add_column("Status", width=4)
-        table.add_column("Item")
+        # ... (rest of the method remains similar, but ensure safety)
+        if not self.items:
+            table = Table(box=None, show_header=False)
+            table.add_column("Item")
+            table.add_row("[grey37]선택할 항목이 없습니다.[/]")
+            menu_panel = Panel(table, title=f"[bold white]{self.title}[/]", border_style="bright_blue")
+        else:
+            # 1. Build Menu Table
+            table = Table(box=None, show_header=False, pad_edge=False)
+            table.add_column("Status", width=4)
+            table.add_column("Item")
 
-        term_height = self.console.height
-        window_size = max(4, term_height - 10) # More space for menu
-        
-        start = max(0, self.selected_index - window_size // 2)
-        end = min(len(self.items), start + window_size)
-        if end - start < window_size and start > 0:
-            start = max(0, end - window_size)
-
-        for i in range(start, end):
-            item = self.items[i]
-            is_current = (i == self.selected_index)
-            is_selected = (self.states[i] == 1)
-            is_flashing = (i == self.last_action_index)
-
-            if self.multi_select:
-                if is_flashing:
-                    status = " [bold black]▶[/]  "
-                    style = "bold black on yellow"
-                elif is_current:
-                    status = " [yellow]▶[/]  "
-                    style = "bold white on blue"
-                else:
-                    status = " [bright_green]✔[/]  " if is_selected else " [grey37]✘[/]  "
-                    style = "bold white on #2e3440" if not is_selected else "bold white on green"
-            else:
-                if is_flashing:
-                    status = " [bold black]▶[/]  "
-                    style = "bold black on yellow"
-                elif is_current:
-                    status = " [yellow]▶[/]  "
-                    style = "bold white on blue"
-                else:
-                    status = "    "
-                    style = "white"
-
-            table.add_row(status, f"{item}", style=style)
-
+            term_height = self.console.height
+            window_size = max(4, term_height - 10) 
             
-        menu_panel = Panel(
-            table,
-            title=f"[bold white]{self.title}[/]",
-            border_style="bright_cyan" if self.items else "bright_blue",
-            expand=True
-        )
+            # Ensure selected_index is valid
+            if self.items:
+                self.selected_index = max(0, min(self.selected_index, len(self.items) - 1))
+            
+            start = max(0, self.selected_index - window_size // 2)
+            end = min(len(self.items), start + window_size)
+            if end - start < window_size and start > 0:
+                start = max(0, end - window_size)
+
+            for i in range(start, end):
+                item = self.items[i]
+                is_current = (i == self.selected_index)
+                is_selected = (self.states[i] == 1)
+                is_flashing = (i == self.last_action_index)
+
+                if self.multi_select:
+                    if is_flashing:
+                        status = " [bold black]▶[/]  "
+                        style = "bold black on yellow"
+                    elif is_current:
+                        status = " [yellow]▶[/]  "
+                        style = "bold white on blue"
+                    else:
+                        status = " [bright_green]✔[/]  " if is_selected else " [grey37]✘[/]  "
+                        style = "bold white on #2e3440" if not is_selected else "bold white on green"
+                else:
+                    if is_flashing:
+                        status = " [bold black]▶[/]  "
+                        style = "bold black on yellow"
+                    elif is_current:
+                        status = " [yellow]▶[/]  "
+                        style = "bold white on blue"
+                    else:
+                        status = "    "
+                        style = "white"
+
+                table.add_row(status, f"{item}", style=style)
+
+            menu_panel = Panel(
+                table,
+                title=f"[bold white]{self.title}[/]",
+                border_style="bright_cyan" if self.items else "bright_blue",
+                expand=True
+            )
 
         # 2. Construct Layout
         layout = Layout()
@@ -112,7 +126,7 @@ class InteractiveSelector:
         main_grid = Table.grid(expand=True)
         main_grid.add_column()
         main_grid.add_column()
-        main_grid.add_row(menu_panel, self.side_panel or Panel("통계 정보 없음", border_style="grey37"))
+        main_grid.add_row(menu_panel, self.side_panel or Panel("정보 없음", border_style="grey37"))
         
         layout["main"].update(main_grid)
         
@@ -125,18 +139,26 @@ class InteractiveSelector:
         return layout
 
     def run(self):
-        indices = self.run_indices()
-        if indices is None: return None
-        if not self.multi_select:
-            return self.items[indices[0]] if indices else None
-        return [self.items[i] for i in indices]
+        try:
+            indices = self.run_indices()
+            if indices is None: return None
+            if not self.multi_select:
+                return self.items[indices[0]] if indices else None
+            return [self.items[i] for i in indices]
+        except Exception as e:
+            self.console.print(f"[bold red]오류 발생: {e}[/]")
+            return None
 
     def run_indices(self):
-        if not self.items: return []
+        if not self.items: 
+            return []
+        
         with Live(self._build_full_layout(), console=self.console, auto_refresh=False, screen=True) as live:
             while True:
                 live.update(self._build_full_layout(), refresh=True)
                 key = self._get_key()
+                if not key: continue
+                
                 k = key.lower()
                 
                 if key == '\x1b[A' or k == 'k' or key == 'ㅏ':
@@ -145,7 +167,7 @@ class InteractiveSelector:
                 elif key == '\x1b[B' or k == 'j' or key == 'ㅓ':
                     self.selected_index = (self.selected_index + 1) % len(self.items)
                     self.last_action_index = -1
-                elif key in (' ', '\r'):
+                elif key in (' ', '\r', '\n'):
                     self.last_action_index = self.selected_index
                     if self.multi_select:
                         self.states[self.selected_index] = 1 - self.states[self.selected_index]
@@ -166,10 +188,18 @@ class InteractiveSelector:
                 elif k == 'q' or key == 'ㅂ':
                     return None
                 elif k in ('1','2','3','4','5','6','7','8','9'):
-                    val = int(k) - 1
-                    if val < len(self.items):
-                        self.selected_index = val
-                        if not self.multi_select: return [val]
+                    try:
+                        val = int(k) - 1
+                        if 0 <= val < len(self.items):
+                            self.selected_index = val
+                            if not self.multi_select: 
+                                live.update(self._build_full_layout(), refresh=True)
+                                import time
+                                time.sleep(0.08)
+                                return [val]
+                    except ValueError:
+                        pass
+
 
     @staticmethod
     def select_one(items, title="Select One", side_panel=None, bottom_panel=None, header_panel=None):

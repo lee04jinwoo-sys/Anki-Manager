@@ -74,3 +74,13 @@ class AnkiConnector:
         except:
             pass
         return list(existing)
+
+    @classmethod
+    def ensure_model_fields(cls, model_name, fields_to_add):
+        try:
+            current_fields = cls.invoke('modelFieldNames', modelName=model_name)
+            for field in fields_to_add:
+                if field not in current_fields:
+                    cls.invoke('modelFieldAdd', modelName=model_name, fieldName=field)
+        except Exception as e:
+            pass

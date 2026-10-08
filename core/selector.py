@@ -96,7 +96,8 @@ class VocabularySelector:
         TOEFL 100점 이상 수준의 학생에게 꼭 필요한, 수준 높은 학습 자료만 {target_count}개 내외로 선별해야 합니다.
         1.  **고급 어휘/숙어 선별**: [전체 텍스트]에서 [기존 단어 목록]에 없는 단어, 숙어, 구동사를 선별합니다.
         2.  **뜻 풀이**: 선별된 각 어휘에 대해 한국어로 명확하고 간결한 뜻을 함께 작성하십시오.
-        3.  **출력 형식**: "selected_vocab" 키에 {{"단어": "word", "뜻": "meaning"}} 형태의 객체 리스트를 담은 JSON 객체로 반환해주십시오.
+        3.  **플레이스홀더 규칙 (필수)**: 숙어나 구동사를 표기할 때 'someone', 'something', 'somebody', 'sb', 'sth' 등은 절대 사용하지 말고, 이를 대문자 기호 'A', 'B' 및 'V-ing' 등으로 변환/표준화하여 단어를 정의하십시오. (예: 'spring something on someone' -> 'spring A on B', 'prevent somebody from doing something' -> 'prevent A from V-ing')
+        4.  **출력 형식**: "selected_vocab" 키에 {{"단어": "word", "뜻": "meaning"}} 형태의 객체 리스트를 담은 JSON 객체로 반환해주십시오.
         """
         try:
             response_stream = self.client.models.generate_content_stream(

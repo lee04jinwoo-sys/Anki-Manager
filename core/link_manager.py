@@ -1,0 +1,543 @@
+import os
+import re
+import json
+import sqlite3
+import html
+import datetime
+from pathlib import Path
+from collections import defaultdict
+from typing import List, Dict, Any, Optional, Tuple, Set
+
+from config import (
+    DECK_VOCAB, MODEL_VOCAB, DECK_SENTENCE, MODEL_SENTENCE, MODEL_GRAMMAR
+)
+from integrations.anki_connect import AnkiConnector
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+DATA_DIR = BASE_DIR / "data"
+BACKUP_DIR = DATA_DIR / "template_backups"
+DB_PATH = DATA_DIR / "links.db"
+
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def get_db_connection() -> sqlite3.Connection:
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def init_db():
+    """SQLite 링크 매핑 및 캐시 테이블 초기화"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS links (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                vocab_note_id INTEGER NOT NULL,
+                vocab_word TEXT NOT NULL,
+                sentence_note_id INTEGER NOT NULL,
+                sentence_text TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(vocab_note_id, sentence_note_id)
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_links_vocab_id ON links(vocab_note_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_links_sentence_id ON links(sentence_note_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_links_vocab_word ON links(vocab_word)")
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS vocab_cache (
+                note_id INTEGER PRIMARY KEY,
+                word TEXT NOT NULL,
+                meaning TEXT,
+                pos TEXT,
+                link_count INTEGER DEFAULT 0,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_vocab_link_count ON vocab_cache(link_count)")
+        conn.commit()
+
+
+def clean_text(raw_html: str) -> str:
+    """HTML 태그 및 특수문자 정규화"""
+    if not raw_html:
+        return ""
+    text = html.unescape(raw_html)
+    text = text.replace('‘', "'").replace('’', "'").replace('“', '"').replace('”', '"')
+    text = re.sub(r'<[^>]+>', '', text)
+    return text.strip()
+
+
+def backup_templates() -> Optional[str]:
+    """현재 Anki에 등록된 템플릿과 CSS 백업"""
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_file = BACKUP_DIR / f"template_backup_{timestamp}.json"
+    
+    backup_data: Dict[str, Any] = {
+        "timestamp": timestamp,
+        "models": {}
+    }
+    
+    for model_name in [MODEL_VOCAB, MODEL_SENTENCE, MODEL_GRAMMAR]:
+        try:
+            templates = AnkiConnector.invoke("modelTemplates", modelName=model_name)
+            styling = AnkiConnector.invoke("modelStyling", modelName=model_name)
+            backup_data["models"][model_name] = {
+                "templates": templates,
+                "styling": styling
+            }
+        except Exception as e:
+            backup_data["models"][model_name] = {"error": str(e)}
+
+    with open(backup_file, "w", encoding="utf-8") as f:
+        json.dump(backup_data, f, ensure_ascii=False, indent=2)
+        
+    return str(backup_file)
+
+
+class PatternMatcher:
+    """단어 및 숙어(A, B, V-ing 등 플레이스홀더 포함) 고정밀 정규식 엔진"""
+
+    IRREGULAR_VERBS = {
+        "be": r"(?:be|am|is|are|was|were|been|being|'s|'re|'m)",
+        "have": r"(?:have|has|had|having|'ve|'d)",
+        "do": r"(?:do|does|did|doing|done)",
+        "take": r"t(?:ake|ook|aken|aking|akes)",
+        "come": r"c(?:ome|ame|oming|omes)",
+        "get": r"g(?:et|ot|otten|etting|ets)",
+        "make": r"m(?:ake|ade|aking|akes)",
+        "go": r"(?:go|went|gone|going|goes)",
+        "see": r"s(?:ee|aw|een|eeing|ees)",
+        "bring": r"br(?:ing|ought|inging|ings)",
+        "catch": r"c(?:atch|aught|atching|atches)",
+        "give": r"g(?:ive|ave|iven|iving|ives)",
+        "keep": r"k(?:eep|ept|eeping|eeps)",
+        "hold": r"h(?:old|eld|olding|olds)",
+        "find": r"f(?:ind|ound|inding|inds)",
+        "run": r"r(?:un|an|unning|uns)",
+        "set": r"s(?:et|etting|ets)",
+        "put": r"p(?:ut|utting|uts)",
+        "tell": r"t(?:ell|old|elling|ells)",
+        "say": r"s(?:ay|aid|aying|ays)",
+        "leave": r"l(?:eave|eft|eaving|eaves)",
+        "feel": r"f(?:eel|elt|eeling|eels)",
+        "lead": r"l(?:ead|ed|eading|eads)",
+        "speak": r"sp(?:eak|oke|oken|eaking|eaks)",
+        "break": r"br(?:eak|oke|oken|eaking|eaks)",
+        "buy": r"b(?:uy|ought|uying|uys)",
+        "think": r"th(?:ink|ought|inking|inks)",
+        "strike": r"str(?:ike|uck|iking|ikes)",
+    }
+
+    # 순수 기능어/전치사 (이것만으로는 숙어로 인정 X)
+    PREPOSITIONS_AND_ARTICLES = {
+        'of', 'in', 'on', 'at', 'to', 'for', 'with', 'by', 'from',
+        'up', 'out', 'over', 'off', 'into', 'about', 'through', 'between',
+        'among', 'after', 'before', 'against', 'under', 'below', 'above',
+        'behind', 'beyond', 'down', 'near', 'toward', 'upon', 'onto',
+        'across', 'along', 'around', 'until', 'since', 'during', 'without',
+        'within', 'a', 'an', 'the', 'and', 'or', 'as', 'than', 'it'
+    }
+
+    # 너무 흔한 단일 동사 (단독+A는 99% 오매칭이므로 스킵)
+    TOO_COMMON_SINGLE_VERBS = {'see', 'do', 'make', 'get', 'go', 'take', 'have', 'say', 'tell', 'know'}
+
+    # 주어/목적어 대명사 및 명사구 패턴
+    NOUN_PHRASE_PATTERN = r"(?:(?:i|you|he|she|it|we|they|me|him|her|us|them)|(?:the\s+|a\s+|an\s+|my\s+|your\s+|his\s+|her\s+|our\s+|their\s+)?[\w'-]+(?:\s+[\w'-]+){0,2})"
+
+    # 개별 부사 단어 목록 (빈출 부사 및 강조어)
+    ADVERB_TOKEN = r"(?:way|far|really|so|much|well|still|just|quite|completely|totally|fairly|already|never|always|definitely|certainly|not|n't|almost|hardly|barely|scarcely|more|less|too|even)"
+
+    # 선택적 부사 수식어 (0~2단어 연속 결합 허용: e.g., 'always so', 'really quite', 'still way', 'far more')
+    OPTIONAL_ADVERB = rf"(?:\s+{ADVERB_TOKEN}(?:\s+{ADVERB_TOKEN})?)?"
+
+    @classmethod
+    def verb_to_regex(cls, token: str) -> str:
+        low = token.lower()
+        if low in cls.IRREGULAR_VERBS:
+            return cls.IRREGULAR_VERBS[low]
+        if low.endswith('e') and len(low) > 2:
+            base = low[:-1]
+            return rf"{re.escape(base)}(?:e|ed|es|ing)"
+        if low.endswith('y') and len(low) > 2:
+            base = low[:-1]
+            return rf"(?:{re.escape(base)}(?:y|ies|ied|ying)|{re.escape(low)})"
+        return rf"{re.escape(low)}(?:s|ed|es|ing)?"
+
+    @classmethod
+    def get_index_keywords(cls, cleaned_text: str) -> List[str]:
+        """
+        역색인 조회를 위한 고특이도(high-specificity) 키워드 추출
+        - be, have, 전치사 등 초빈출어는 제외하고 실제 의미어를 최우선 추출!
+        """
+        tokens = cleaned_text.lower().split()
+        content_candidates = []
+        fallback_candidates = []
+
+        for t in tokens:
+            t_clean = re.sub(r"[^\w'-]", '', t)
+            if not t_clean or t.upper() in ('A', 'B', 'C', 'V', 'V-ING', 'V_ING'):
+                continue
+            if len(t_clean) >= 2:
+                if t_clean not in cls.PREPOSITIONS_AND_ARTICLES and t_clean not in ('be', 'have', 'do'):
+                    content_candidates.append(t_clean)
+                else:
+                    fallback_candidates.append(t_clean)
+
+        # 실질 의미어가 있으면 그것만 역색인 키워드로 사용
+        target_list = content_candidates if content_candidates else fallback_candidates
+        keywords = []
+        for w in target_list:
+            keywords.append(w)
+            if len(w) > 4:
+                keywords.append(w[:4])
+        return keywords
+
+    @classmethod
+    def build_regex(cls, word_or_idiom: str) -> Optional[re.Pattern]:
+        cleaned = clean_text(word_or_idiom).strip()
+        if not cleaned:
+            return None
+
+        cleaned = re.sub(r'\(.*?\)', '', cleaned).strip()
+        tokens = cleaned.split()
+        if not tokens:
+            return None
+
+        upper_tokens = [t.upper() for t in tokens]
+        has_placeholder = any(t in ('A', 'B', 'C', 'V', 'V-ING', 'V_ING') for t in upper_tokens)
+
+        # 플레이스홀더를 제외한 실제 단어들
+        non_placeholder_tokens = [
+            re.sub(r"[^\w'-]", '', t).lower()
+            for t in tokens
+            if t.upper() not in ('A', 'B', 'C', 'V', 'V-ING', 'V_ING')
+        ]
+        non_placeholder_tokens = [t for t in non_placeholder_tokens if t]
+
+        # [특이도 필터 1] 플레이스홀더 포함 숙어인데 의미어가 하나도 없거나 전부 전치사/관사뿐인 경우 스킵!
+        # 예: 'A over B', 'A out of B' -> 100% false positive 폭탄이므로 스킵
+        if has_placeholder:
+            if not non_placeholder_tokens:
+                return None
+            if all(t in cls.PREPOSITIONS_AND_ARTICLES for t in non_placeholder_tokens):
+                return None
+            # 예: 'see A' 처럼 단일 초빈출 동사 1개뿐인 경우 스킵
+            if len(non_placeholder_tokens) == 1 and non_placeholder_tokens[0] in cls.TOO_COMMON_SINGLE_VERBS:
+                return None
+
+        # [특수 케이스] 'many a A' -> 고정 관용구이므로 'many a [단어]' 엄격 매칭
+        if len(tokens) == 3 and tokens[0].lower() == 'many' and tokens[1].lower() == 'a' and upper_tokens[2] == 'A':
+            return re.compile(r"\bmany\s+a\s+[a-zA-Z]+(?:\s+[a-zA-Z]+){0,2}\b", re.IGNORECASE)
+
+        pattern_parts = []
+        for i, token in enumerate(tokens):
+            t_upper = token.upper()
+            if t_upper in ('A', 'B', 'C'):
+                pattern_parts.append(cls.NOUN_PHRASE_PATTERN)
+            elif t_upper in ('V-ING', 'V_ING'):
+                pattern_parts.append(r"[a-zA-Z'-]+ing")
+            elif t_upper == 'V':
+                pattern_parts.append(r"[a-zA-Z'-]+")
+            elif '/' in token:
+                sub_parts = [re.escape(p) for p in token.split('/') if p]
+                pattern_parts.append(rf"(?:{'|'.join(sub_parts)})")
+            else:
+                token_clean = re.sub(r"[^\w'-]", '', token).lower()
+                if not token_clean:
+                    continue
+
+                if token_clean in cls.IRREGULAR_VERBS:
+                    v_regex = cls.IRREGULAR_VERBS[token_clean]
+                    # be 동사나 일반 동사 뒤에 선택적 부사 허용
+                    if token_clean == 'be':
+                        pattern_parts.append(rf"(?:{v_regex}){cls.OPTIONAL_ADVERB}")
+                    else:
+                        pattern_parts.append(v_regex)
+                elif i == 0 and len(tokens) > 1:
+                    pattern_parts.append(cls.verb_to_regex(token_clean))
+                elif len(tokens) == 1:
+                    pattern_parts.append(cls.verb_to_regex(token_clean))
+                else:
+                    pattern_parts.append(re.escape(token_clean))
+
+        # be 동사 축약형('s) 허용: 주어 바로 뒤에 's가 붙는 경우 (he's, it's 등)
+        # 공백 또는 따옴표 축약 결합 허용
+        regex_str = r"\b" + r"(?:\s+|(?=[']))".join(pattern_parts) + r"\b"
+        try:
+            return re.compile(regex_str, re.IGNORECASE)
+        except re.error:
+            return re.compile(r"\b" + re.escape(cleaned.lower()) + r"\b", re.IGNORECASE)
+
+
+class LinkManager:
+    """초고속 역색인 기반 단어-문장 링크 관리 서비스"""
+
+    @classmethod
+    def scan_and_rebuild_links(cls) -> Dict[str, Any]:
+        init_db()
+
+        # 1. Anki에서 카드 정보 로드 (청크 단위 배치)
+        vocab_notes_ids = AnkiConnector.find_notes(f'note:"{MODEL_VOCAB}"') or []
+        sentence_notes_ids = AnkiConnector.find_notes(f'note:"{MODEL_SENTENCE}" OR note:"{MODEL_GRAMMAR}"') or []
+
+        # 배치 로드
+        def fetch_in_chunks(ids: List[int], chunk_size: int = 2000):
+            res = []
+            for i in range(0, len(ids), chunk_size):
+                chunk = ids[i:i + chunk_size]
+                info = AnkiConnector.get_notes_info(chunk)
+                if info:
+                    res.extend(info)
+            return res
+
+        vocab_info_list = fetch_in_chunks(vocab_notes_ids)
+        sentence_info_list = fetch_in_chunks(sentence_notes_ids)
+
+        # 2. 문장 데이터 구조화 및 고속 역색인(Inverted Index) 구축
+        sentences_dict: Dict[int, str] = {}
+        inverted_index: Dict[str, Set[int]] = defaultdict(set)
+
+        for s in sentence_info_list:
+            nid = s['noteId']
+            stext = clean_text(s['fields'].get('문장', {}).get('value', ''))
+            if stext:
+                sentences_dict[nid] = stext
+                # 문장 단어 토큰화
+                tokens = re.findall(r"\b[a-zA-Z'-]+\b", stext.lower())
+                for t in tokens:
+                    inverted_index[t].add(nid)
+                    if len(t) > 4:
+                        inverted_index[t[:4]].add(nid)
+
+        # 3. 단어 데이터 정제 및 정규식 컴파일
+        vocabs = []
+        for v in vocab_info_list:
+            nid = v['noteId']
+            word_raw = v['fields'].get('단어', {}).get('value', '')
+            word = clean_text(word_raw)
+            meaning = clean_text(v['fields'].get('뜻', {}).get('value', ''))
+            pos = clean_text(v['fields'].get('품사', {}).get('value', ''))
+            if word:
+                regex = PatternMatcher.build_regex(word)
+                keywords = PatternMatcher.get_index_keywords(word)
+                vocabs.append({
+                    "note_id": nid,
+                    "word": word,
+                    "meaning": meaning,
+                    "pos": pos,
+                    "regex": regex,
+                    "keywords": keywords
+                })
+
+        # 4. 초고속 역색인 기반 매칭 (O(N*M) -> O(N * 후보군))
+        links_to_insert = []
+        vocab_counts: Dict[int, int] = {v["note_id"]: 0 for v in vocabs}
+
+        for v in vocabs:
+            regex = v["regex"]
+            if not regex:
+                continue
+
+            keywords = v["keywords"]
+            candidate_sids: Optional[Set[int]] = None
+
+            if keywords:
+                # 키워드들 중 역색인에 걸리는 문장 ID들의 교집합/합집합 탐색
+                # 가장 희귀한 키워드를 찾아 후보군 대폭 축소
+                for kw in keywords:
+                    matching_ids = inverted_index.get(kw)
+                    if matching_ids:
+                        if candidate_sids is None:
+                            candidate_sids = set(matching_ids)
+                        else:
+                            # 부분 집합
+                            candidate_sids = candidate_sids.intersection(matching_ids)
+                            if not candidate_sids:
+                                break
+
+            # 만약 키워드로 후보군이 안 잡히면(매우 특수한 경우) 건너뜀
+            if not candidate_sids:
+                continue
+
+            # 극소수의 후보 문장들에 대해서만 정규식 정밀 검사
+            for s_id in candidate_sids:
+                s_text = sentences_dict.get(s_id, '')
+                if s_text and regex.search(s_text):
+                    links_to_insert.append((v["note_id"], v["word"], s_id, s_text))
+                    vocab_counts[v["note_id"]] += 1
+
+        # 5. DB 일괄 저장
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM links")
+            cursor.execute("DELETE FROM vocab_cache")
+
+            cursor.executemany("""
+                INSERT OR IGNORE INTO links (vocab_note_id, vocab_word, sentence_note_id, sentence_text)
+                VALUES (?, ?, ?, ?)
+            """, links_to_insert)
+
+            vocab_cache_data = [
+                (v["note_id"], v["word"], v["meaning"], v["pos"], vocab_counts.get(v["note_id"], 0))
+                for v in vocabs
+            ]
+            cursor.executemany("""
+                INSERT INTO vocab_cache (note_id, word, meaning, pos, link_count)
+                VALUES (?, ?, ?, ?, ?)
+            """, vocab_cache_data)
+
+            conn.commit()
+
+        return {
+            "total_vocab": len(vocabs),
+            "total_sentences": len(sentences_dict),
+            "total_links": len(links_to_insert),
+            "unlinked_vocab_count": sum(1 for c in vocab_counts.values() if c == 0)
+        }
+
+    @classmethod
+    def get_stats(cls) -> Dict[str, Any]:
+        init_db()
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM vocab_cache")
+            total_vocab = cursor.fetchone()[0]
+
+            cursor.execute("SELECT COUNT(DISTINCT sentence_note_id) FROM links")
+            linked_sentences = cursor.fetchone()[0]
+
+            cursor.execute("SELECT COUNT(*) FROM links")
+            total_links = cursor.fetchone()[0]
+
+            cursor.execute("SELECT COUNT(*) FROM vocab_cache WHERE link_count = 0")
+            unlinked_vocab = cursor.fetchone()[0]
+
+            return {
+                "total_vocab": total_vocab,
+                "total_links": total_links,
+                "linked_sentences": linked_sentences,
+                "unlinked_vocab": unlinked_vocab
+            }
+
+    @classmethod
+    def get_vocab_list(
+        cls,
+        limit: int = 50,
+        offset: int = 0,
+        max_links: Optional[int] = None,
+        search: Optional[str] = None
+    ) -> Dict[str, Any]:
+        init_db()
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+
+            query = "SELECT note_id, word, meaning, pos, link_count FROM vocab_cache WHERE 1=1"
+            params: List[Any] = []
+
+            if max_links is not None:
+                query += " AND link_count <= ?"
+                params.append(max_links)
+
+            if search:
+                query += " AND (word LIKE ? OR meaning LIKE ?)"
+                params.extend([f"%{search}%", f"%{search}%"])
+
+            count_query = f"SELECT COUNT(*) FROM ({query})"
+            cursor.execute(count_query, params)
+            total_items = cursor.fetchone()[0]
+
+            query += " ORDER BY link_count ASC, word ASC LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+
+            cursor.execute(query, params)
+            items = [dict(row) for row in cursor.fetchall()]
+
+            return {
+                "total": total_items,
+                "limit": limit,
+                "offset": offset,
+                "items": items
+            }
+
+    @classmethod
+    def get_linked_sentences_for_vocab(cls, word: str) -> List[Dict[str, Any]]:
+        init_db()
+        cleaned_word = clean_text(word).strip()
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT sentence_note_id, sentence_text
+                FROM links
+                WHERE lower(vocab_word) = lower(?)
+            """, (cleaned_word,))
+            return [dict(row) for row in cursor.fetchall()]
+
+    @classmethod
+    def get_linked_vocab_for_sentence(cls, sentence_text: str) -> List[str]:
+        init_db()
+        cleaned = clean_text(sentence_text).strip()
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT DISTINCT vocab_word
+                FROM links
+                WHERE lower(sentence_text) = lower(?)
+            """, (cleaned,))
+            rows = cursor.fetchall()
+            return [row["vocab_word"] for row in rows]
+
+    @classmethod
+    def get_random_unlinked_vocab(cls, count: int = 20) -> List[Dict[str, Any]]:
+        """미연결(link_count = 0) 단어 중 무작위 N개 추출"""
+        init_db()
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT note_id, word, meaning, pos, link_count
+                FROM vocab_cache
+                WHERE link_count = 0
+                ORDER BY RANDOM()
+                LIMIT ?
+            """, (count,))
+            return [dict(row) for row in cursor.fetchall()]
+
+    @classmethod
+    def get_worst_leech_unlinked_vocab(cls, count: int = 20) -> List[Dict[str, Any]]:
+        """미연결(link_count = 0) 단어 중 가장 많이 틀린(Lapses 많은 순) 단어 N개 추출"""
+        init_db()
+        from integrations.anki_connect import AnkiConnector
+
+        card_lapses = {}
+        try:
+            # lapses 높은 순 카드 검색 (prop:lapses>=3)
+            leech_cards = AnkiConnector.invoke('findCards', query='note:"English Vocabulary" prop:lapses>=3')
+            if leech_cards:
+                sample_ids = leech_cards[:400]
+                cards_info = AnkiConnector.invoke('cardsInfo', cards=sample_ids)
+                card_lapses = {c['note']: c['lapses'] for c in cards_info}
+        except Exception:
+            card_lapses = {}
+
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT note_id, word, meaning, pos, link_count
+                FROM vocab_cache
+                WHERE link_count = 0
+            """)
+            zero_items = [dict(row) for row in cursor.fetchall()]
+
+        matched = []
+        for item in zero_items:
+            nid = item['note_id']
+            item['lapses'] = card_lapses.get(nid, 0)
+            if item['lapses'] > 0:
+                matched.append(item)
+
+        # lapses 내림차순 정렬
+        matched.sort(key=lambda x: -x['lapses'])
+        return matched[:count]

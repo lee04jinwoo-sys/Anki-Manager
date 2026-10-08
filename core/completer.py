@@ -1,10 +1,40 @@
 import json
 import os
+import html
+import re
 import concurrent.futures
 from google import genai
 from google.genai import types
 from dotenv import load_dotenv
 from tqdm import tqdm
+
+def normalize_vocab_placeholders(word: str) -> str:
+    """
+    Normalizes placeholders like someone, something, sb, sth, somebody to A, B, C.
+    And doing / doing something to V-ing.
+    e.g., 'spring something on someone' -> 'spring A on B'
+          'prevent someone from doing something' -> 'prevent A from V-ing'
+    """
+    # 1. Normalize 'doing something' / 'doing sth' / 'doing' to 'V-ing'
+    word = re.sub(r'\bdoing\s+(something|sth)\b', 'V-ing', word, flags=re.IGNORECASE)
+    word = re.sub(r'\bdoing\b', 'V-ing', word, flags=re.IGNORECASE)
+    
+    # 2. Normalize 'sb', 'sth', 'someone', 'something', 'somebody', 'sbd' to A, B, C
+    pattern = r'\b(someone|somebody|sb|sbd|something|sth)\b'
+    placeholders = ['A', 'B', 'C']
+    placeholder_idx = 0
+    
+    def repl(match):
+        nonlocal placeholder_idx
+        if placeholder_idx < len(placeholders):
+            res = placeholders[placeholder_idx]
+            placeholder_idx += 1
+            return res
+        return match.group(0)
+        
+    normalized = re.sub(pattern, repl, word, flags=re.IGNORECASE)
+    normalized = re.sub(r'\s+', ' ', normalized).strip()
+    return normalized
 
 load_dotenv()
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
@@ -16,6 +46,7 @@ from config import (
 )
 from integrations.anki_connect import AnkiConnector
 from utils.pos_automator import get_simple_pos, setup_nltk
+from utils.timestamp_matcher import find_best_timestamp
 
 def _print(pbar, *args, **kwargs):
     if pbar:
@@ -43,7 +74,40 @@ class NoteCompleter:
                     temperature=GEMINI_DEFAULT_TEMPERATURE
                 )
             )
-            return json.loads(response.text)
+            try:
+                # strict=False allows unescaped control characters like literal newlines inside strings
+                res = json.loads(response.text, strict=False)
+            except Exception as json_err:
+                _print(self.pbar, f"❌ Raw AI response text:\n{response.text}")
+                raise json_err
+            
+            # AI가 리스트를 반환한 경우 첫 번째 요소만 사용하거나 딕셔너리로 변환 시도
+            if isinstance(res, list) and len(res) > 0:
+                res = res[0]
+            
+            if not isinstance(res, dict):
+                _print(self.pbar, f"⚠️ AI 응답 형식이 올바르지 않습니다 (dict 기대, {type(res)} 수신)")
+                return None
+
+            # [Fix] AI가 {'sentence': {...}} 또는 {'vocabulary': {...}} 처럼 중첩해서 주는 경우 처리
+            if "sentence" in res and isinstance(res["sentence"], dict):
+                res = res["sentence"]
+            elif "vocabulary" in res and isinstance(res["vocabulary"], dict):
+                res = res["vocabulary"]
+            elif "vocab" in res and isinstance(res["vocab"], dict):
+                res = res["vocab"]
+
+            # 모든 문자열 값에 대해 HTML 엔티티 제거
+            def recursive_unescape(data):
+                if isinstance(data, dict):
+                    return {k: recursive_unescape(v) for k, v in data.items()}
+                elif isinstance(data, list):
+                    return [recursive_unescape(i) for i in data]
+                elif isinstance(data, str):
+                    return html.unescape(data)
+                return data
+                
+            return recursive_unescape(res)
         except Exception as e:
             _print(self.pbar, f"❌ AI 분석 실패: {e}")
             return None
@@ -66,14 +130,18 @@ class NoteCompleter:
             [데이터]:
             {}
             """
-            future_to_chunk = {
-                executor.submit(self._generate, prompt_template.format(chunk)): chunk 
+            futures = [
+                (executor.submit(self._generate, prompt_template.format(chunk)), chunk)
                 for chunk in chunks
-            }
-            for future in concurrent.futures.as_completed(future_to_chunk):
+            ]
+            for future, chunk in futures:
                 res = future.result()
                 if res and "sentences" in res:
-                    all_results.extend(res["sentences"])
+                    ai_items = res["sentences"]
+                    if len(ai_items) == len(chunk):
+                        for original_item, ai_item in zip(chunk, ai_items):
+                            ai_item['문장'] = original_item
+                    all_results.extend(ai_items)
         return all_results
 
     def enrich_vocab(self, vocab):
@@ -94,14 +162,19 @@ class NoteCompleter:
             [데이터]:
             {}
             """
-            future_to_chunk = {
-                executor.submit(self._generate, prompt_template.format(chunk)): chunk 
+            futures = [
+                (executor.submit(self._generate, prompt_template.format(chunk)), chunk)
                 for chunk in chunks
-            }
-            for future in concurrent.futures.as_completed(future_to_chunk):
+            ]
+            for future, chunk in futures:
                 res = future.result()
                 if res and "vocab" in res:
-                    all_results.extend(res["vocab"])
+                    ai_items = res["vocab"]
+                    if len(ai_items) == len(chunk):
+                        for original_item, ai_item in zip(chunk, ai_items):
+                            if isinstance(original_item, dict) and '단어' in original_item:
+                                ai_item['단어'] = original_item['단어']
+                    all_results.extend(ai_items)
         return all_results
 
     def complete_fields(self, model_name, main_field_value, current_fields, missing_fields):
@@ -129,7 +202,12 @@ class NoteCompleter:
                 f"모델: {model_name}\n"
                 f"문장 및 정답 데이터: {current_fields}\n"
                 f"누락된 필드: {missing_fields}\n\n"
-                f"제공된 문법 문제 데이터를 바탕으로 '해설'(문장 번역)과 '설명'(정답이 정답인 이유에 대한 상세 문법 해설)을 작성하세요.\n"
+                f"지시사항:\n"
+                f"1. 제공된 문법 문제 데이터를 바탕으로 누락된 필드를 채워 반환하세요.\n"
+                f"2. 만약 '해설'이 누락되었다면 문장 전체에 대한 자연스러운 한국어 번역만 작성하세요.\n"
+                f"3. 만약 '설명'이 누락되었다면 정답이 왜 정답인지 논리적이고 친절한 해설을 작성하세요.\n"
+                f"4. 만약 '보기1', '보기2', '보기3' 중 비어있는 항목이 있다면, 문맥상 오답이면서 영어 학습자를 헷갈리게 할 만한 매력적인 오답을 생성하세요.\n"
+                f"5. [중요] 모든 선택지('정답', '보기1', '보기2', '보기3')는 형태나 스펠링이 서로 완전히 달라야 하며, 어떠한 중복도 허용하지 않습니다.\n"
                 f"반드시 JSON 형식으로 반환하세요."
             )
         else:
@@ -156,7 +234,7 @@ def run_universal_field_completion(pbar=None):
             "all_fields": ["단어", "뜻", "품사", "유의어", "예문", "설명"]
         },
         MODEL_GRAMMAR: {
-            "triggers": ["해설", "설명"],
+            "triggers": ["해설", "설명", "보기1", "보기2", "보기3"],
             "all_fields": ["문장", "해설", "보기1", "보기2", "보기3", "정답", "설명"]
         }
     }
@@ -180,8 +258,21 @@ def run_universal_field_completion(pbar=None):
         
         def process_note(n):
             note_id = n['noteId']
-            fields = {k: v['value'] for k, v in n['fields'].items()}
+            # HTML 엔티티(예: &#x27;)를 일반 문자로 변환하여 TTS 및 가독성 개선
+            fields = {k: html.unescape(v['value']) for k, v in n['fields'].items()}
             
+            main_field = config["all_fields"][0]
+            main_val = fields.get(main_field, "")
+            
+            # Normalize existing vocabulary placeholders in Anki automatically
+            if model_name == MODEL_VOCAB:
+                normalized_word = normalize_vocab_placeholders(main_val)
+                if normalized_word != main_val:
+                    AnkiConnector.update_note_fields(note_id, {"단어": normalized_word})
+                    _print(pbar, f"🔄 단어 표준화 자동 변환: {main_val} -> {normalized_word}")
+                    main_val = normalized_word
+                    fields["단어"] = normalized_word
+
             # 실제로 비어있는 필드 식별 (전체 필드 대상)
             missing_fields = [f for f in config["all_fields"] if not fields.get(f, "").strip()]
             
@@ -223,26 +314,41 @@ def run_note_completion(sentences_data, vocab_data, pbar=None, step_points=0, in
     s_list = sentences_data.get('sentences', [])
     v_list = vocab_data.get('vocab', [])
     
+    # Normalize vocabulary placeholders (e.g. someone/something -> A/B)
+    for v in v_list:
+        if isinstance(v, dict) and '단어' in v:
+            v['단어'] = normalize_vocab_placeholders(v['단어'])
+
     if not s_list and not v_list:
         if pbar: pbar.update(step_points)
         return True, [], []
 
+    # 유튜브 영상 ID가 전달된 경우 안키 필드 자동 확장 확인 및 추가
+    video_id = sentences_data.get("video_id") or vocab_data.get("video_id") or ""
+    segments = sentences_data.get("segments") or vocab_data.get("segments") or []
+    
+    if video_id:
+        _print(pbar, f"🔍 Anki 모델 필드 확인 중 ('영상ID', '시작시간'...)")
+        if s_list:
+            AnkiConnector.ensure_model_fields(MODEL_SENTENCE, ["영상ID", "시작시간"])
+
+    # 1. 사용자 검수 (Selector)를 데이터 보강(Enrichment) 전에 실행
+    if inspector_func:
+        # Wrap into a dictionary as expected by main.py's cli_inspector
+        inspection_data = {"sentences": s_list, "vocab": v_list}
+        inspected_data = inspector_func(inspection_data)
+        s_list = inspected_data.get("sentences", [])
+        v_list = inspected_data.get("vocab", [])
+
     completer = NoteCompleter(pbar=pbar)
     step_amt = step_points * (1.0 - NOTE_ENRICH_PROGRESS_RATIO) / 2.0
     
+    # 2. 사용자가 최종 선택한 데이터만 AI로 보강 (로딩 최적화)
     enriched_s = completer.enrich_sentences(s_list) if s_list else []
     if pbar: pbar.update(step_amt)
     
     enriched_v = completer.enrich_vocab(v_list) if v_list else []
     if pbar: pbar.update(step_amt)
-    
-    # Final inspector check if provided
-    if inspector_func:
-        # Wrap into a dictionary as expected by main.py's cli_inspector
-        inspection_data = {"sentences": enriched_s, "vocab": enriched_v}
-        enriched_data = inspector_func(inspection_data)
-        enriched_s = enriched_data.get("sentences", [])
-        enriched_v = enriched_data.get("vocab", [])
     
     # Now add to Anki
     step_amt = step_points * NOTE_ENRICH_PROGRESS_RATIO / (len(enriched_s) + len(enriched_v) if (len(enriched_s) + len(enriched_v)) > 0 else 1)
@@ -252,7 +358,19 @@ def run_note_completion(sentences_data, vocab_data, pbar=None, step_points=0, in
     
     for s in enriched_s:
         try:
-            AnkiConnector.add_note(DECK_SENTENCE, MODEL_SENTENCE, {"문장": s['문장'], "해설": s['해설']})
+            start_time = ""
+            if video_id and segments:
+                start_time = str(int(find_best_timestamp(s['문장'], segments)))
+                
+            fields = {
+                "문장": s['문장'], 
+                "해설": s['해설']
+            }
+            if video_id:
+                fields["영상ID"] = video_id
+                fields["시작시간"] = start_time
+                
+            AnkiConnector.add_note(DECK_SENTENCE, MODEL_SENTENCE, fields)
             processed_sentences.append(s['문장'])
         except Exception as e:
             if "duplicate" in str(e).lower():
@@ -273,10 +391,19 @@ def run_note_completion(sentences_data, vocab_data, pbar=None, step_points=0, in
         pos_tag = get_simple_pos(word)
         
         try:
-            AnkiConnector.add_note(DECK_VOCAB, MODEL_VOCAB, {
-                "단어": word, "뜻": v['뜻'], "품사": pos_tag, 
-                "유의어": v['유의어'], "예문": v['예문'], "설명": v['설명']
-            })
+            start_time = ""
+            if video_id and segments:
+                start_time = str(int(find_best_timestamp(word, segments)))
+                
+            fields = {
+                "단어": word, 
+                "뜻": v['뜻'], 
+                "품사": pos_tag, 
+                "유의어": v['유의어'], 
+                "예문": v['예문'], 
+                "설명": v['설명']
+            }
+            AnkiConnector.add_note(DECK_VOCAB, MODEL_VOCAB, fields)
             processed_vocab.append(word)
         except Exception as e:
             if "duplicate" in str(e).lower():

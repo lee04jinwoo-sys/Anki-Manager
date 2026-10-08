@@ -14,6 +14,7 @@ VOCAB_SELECTOR_MODEL = get_setting("VOCAB_SELECTOR_MODEL", 'gemini-flash-lite-la
 NOTE_COMPLETOR_MODEL = get_setting("NOTE_COMPLETOR_MODEL", 'gemini-flash-lite-latest')
 SITUATION_GENERATOR_MODEL = get_setting("SITUATION_GENERATOR_MODEL", 'gemini-flash-lite-latest')
 GRAMMAR_GENERATOR_MODEL = get_setting("GRAMMAR_GENERATOR_MODEL", "gemini-flash-lite-latest")
+KNOWLEDGE_EXTRACTOR_MODEL = get_setting("KNOWLEDGE_EXTRACTOR_MODEL", "gemini-flash-latest")
 
 # --- API & Model Parameters ---
 GEMINI_DEFAULT_TEMPERATURE = 0.3
@@ -52,7 +53,8 @@ DECK_VOCAB = "1. Language::1.1. English::Vocabulary"
 MODEL_VOCAB = "English Vocabulary"
 MODEL_GRAMMAR = "English Grammar"
 DECK_GRAMMAR = "1. Language::1.1. English::Grammar"
-DECK_LISTENING = "1. Language::1.1. English::listening"
+DECK_KNOWLEDGE = "Knowledge"
+MODEL_KNOWLEDGE = "Knowledge Q&A"
 
 # --- File Paths ---
 CANDIDATES_FILE = 'candidates.json'
@@ -104,10 +106,11 @@ NOTE_COMPLETOR_SYS_INSTRUCT = """당신은 영어 학습 자료를 제작하는 
 
 [공통 규칙]
 - 모든 응답은 유효한 JSON이어야 합니다.
-- 숙어/동사구의 'A, B, V, somebody, something' 등의 플레이스홀더는 실제 문장을 만들 때 반드시 자연스러운 대상(사람, 사물, 동작)으로 대체하여 작성하십시오.
+- 숙어/동사구의 'A, B, V' 등의 플레이스홀더는 실제 문장(예문)을 만들 때 반드시 자연스러운 대상(사람, 사물, 동작)으로 대체하여 작성하십시오.
+- **단어 표기 표준화 (중요)**: 숙어/동사구의 플레이스홀더(누가, 무엇을 등 대상)는 'someone', 'something', 'somebody', 'sb', 'sth' 등을 사용하지 말고, 대문자 기호 'A', 'B', 'C' 및 'V-ing' 등으로 표준화하여 작성해야 합니다. (예: 'spring something on someone' -> 'spring A on B', 'prevent somebody from doing something' -> 'prevent A from V-ing')
 
 [단어(Vocabulary) 필드 작성 규칙]
-1. 단어: 영단어 또는 숙어 (A, B, V 기호 포함 가능)
+1. 단어: 영단어 또는 숙어 (A, B, V, V-ing 기호 포함 가능)
 2. 뜻: 문맥에 맞는 정확한 한글 뜻
 3. 품사: n, v, adj, adv, idiom, jargon 등
 4. 유의어: 유사한 영단어 (콤마 구분)
@@ -118,7 +121,7 @@ NOTE_COMPLETOR_SYS_INSTRUCT = """당신은 영어 학습 자료를 제작하는 
    - ③ 콜로케이션: "자주 쓰이는 표현으로는 '[영어표현](한글뜻)' 등이 있습니다."
 
 [문장(Sentence) 필드 작성 규칙]
-1. 문장: 학습 가치가 높은 핵심 구문. (중요: A, B, V 기호가 포함된 문장이 아닌, 실제 상황에서 쓰이는 완전한 문장이어야 함)
+1. 문장: 학습 가치가 높은 핵심 구문. (중요: A, B, V 기호가 포함된 문장이 아닌, 실제 상황에서 쓰이는 완전한 문장이어야 함. 또한 스펠링 에러나 대소문자 오류가 있다면 원래 의미를 훼손하지 않는 선에서 완벽하게 교정하여 작성할 것)
 2. 해설: 문장의 자연스러운 한국어 번역 결과만 직접적으로 작성. (~라는 뜻입니다, ~를 나타냅니다 같은 메타 설명은 절대 금지)"""
 VOCAB_SELECTOR_SYS_INSTRUCT = "당신은 영어 학습 자료를 선별하는 전문 영어 강사입니다. 반드시 JSON 형식으로만 응답해야 합니다."
 SENTENCE_SELECTOR_SYS_INSTRUCT = "당신은 영어 학습 자료를 만드는 보조 연구원입니다. 반드시 JSON 형식으로만 응답해야 합니다."
@@ -128,8 +131,7 @@ SITUATION_GENERATOR_SYS_INSTRUCT = "당신은 최고 수준의 영어 회화 및
 NOTE_TYPES_CONFIG = {
     "English Sentence": {
         "deck_assignment": [
-            {"card": "Card 1", "target": "1. Language::1.1. English::Sentence"},
-            {"card": "Card 2", "target": "1. Language::1.1. English::listening"}
+            {"card": "Card 1", "target": "1. Language::1.1. English::Sentence"}
         ],
         "css": """/* --- 카드 기본 레이아웃 --- */
 .card {
@@ -199,6 +201,33 @@ NOTE_TYPES_CONFIG = {
   color: #9ca3af;
   font-weight: 400;
   margin-top: 16px;
+}
+
+/* --- 다크 모드 (Night Mode) --- */
+.card.nightMode {
+  background: #1f2937;
+  color: #f3f4f6;
+  border-color: #374151;
+}
+.card.nightMode hr {
+  border-top-color: #374151;
+}
+.nightMode .pos {
+  box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+}
+.nightMode .v { background: #1e3a8a; color: #bfdbfe; border-color: #1e40af; }
+.nightMode .n { background: #78350f; color: #fde68a; border-color: #92400e; }
+.nightMode .adj { background: #4c1d95; color: #ddd6fe; border-color: #5b21b6; }
+.nightMode .adv { background: #064e3b; color: #a7f3d0; border-color: #065f46; }
+.nightMode .idiom { background: #374151; color: #e5e7eb; border-color: #4b5563; }
+.nightMode .jargon { background: #7f1d1d; color: #fecaca; border-color: #991b1b; }
+.nightMode .prep { background: #831843; color: #fbcfe8; border-color: #9d174d; }
+.nightMode .conj { background: #164e63; color: #a5f3fc; border-color: #155e75; }
+.nightMode .title {
+  color: #f9fafb;
+}
+.nightMode .deck {
+  color: #6b7280;
 }""",
         "templates": {
             "Card 1": {
@@ -235,41 +264,154 @@ NOTE_TYPES_CONFIG = {
 {{문장}}{{소리}}
 
 </div>
-<div class=\"deck\">{{Deck}}</div>"""
-            },
-            "Card 2": {
-                "Front": "{{소리}}\\n<div class=\"deck\">{{Deck}}</div>",
-                "Back": """<style>
-@keyframes cardFlip {
-  0%   { opacity:0; transform: perspective(700px) rotateY(-90deg) scale(0.95); }
-  60%  { opacity:1; transform: perspective(700px) rotateY(6deg) scale(1.01); }
-  80%  { transform: perspective(700px) rotateY(-2deg) scale(1.0); }
-  100% { opacity:1; transform: perspective(700px) rotateY(0deg) scale(1); }
-}
-@keyframes fadeUp {
-  from { opacity:0; transform: translateY(8px); }
-  to   { opacity:1; transform: translateY(0); }
-}
-.card { animation: none; }
-.card.anim-ready { animation: cardFlip 0.5s cubic-bezier(0.4,0,0.2,1) both; }
-.card.anim-ready hr ~ * { animation: fadeUp 0.3s ease 0.3s both; }
-</style>
+
+<!-- YouTube Player -->
+<div id=\"video-container\" style=\"margin: 14px auto; max-width: 480px; aspect-ratio: 16/9; overflow: hidden; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: none;\">
+  <div id=\"yt-player\"></div>
+</div>
 <script>
-(function() {
-  function trigger() {
-    var c = document.querySelector(".card");
-    if (c) { c.classList.remove("anim-ready"); void c.offsetWidth; c.classList.add("anim-ready"); }
-  }
-  if (typeof onUpdateHook !== "undefined") { onUpdateHook.push(trigger); } else { trigger(); }
-})();
+  (function() {
+    var videoId = \"\".trim();
+    var startSec = 0;
+    if (videoId) {
+      var container = document.getElementById(\"video-container\");
+      container.style.display = \"block\";
+      var player = document.getElementById(\"yt-player\");
+      player.outerHTML = '<iframe width=\"100%\" height=\"100%\" src=\"https://www.youtube.com/embed/' + videoId + '?start=' + startSec + '&autoplay=0&mute=0&rel=0&enablejsapi=1\" frameborder=\"0\" allow=\"autoplay; encrypted-media\" allowfullscreen style=\"width:100%; height:100%; aspect-ratio:16/9;\"></iframe>';
+    }
+  })();
 </script>
-{{소리}}
-<hr>
-<div class=title>
-{{문장}}</div>
+
 <div class=\"deck\">{{Deck}}</div>"""
             }
         }
+    },
+    "English Grammar": {
+        "deck_assignment": [
+            {"card": "Card 1", "target": "1. Language::1.1. English::Grammar"},
+            {"card": "Card 3", "target": "1. Language::1.1. English::Sentence"}
+        ],
+        "css": """/* --- 카드 기본 레이아웃 --- */
+.card {
+  font-family: '나눔고딕', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 20px; font-weight: 600; text-align: center; color: #1f2937;
+  background: #ffffff; border: 1px solid #e5e7eb; border-radius: 14px;
+  width: min(95%, 720px); margin: 15px auto; padding: 22px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05), 0 6px 12px rgba(0, 0, 0, 0.08);
+}
+.title {
+  font-size: 25px;
+  font-weight: 700;
+  margin-bottom: 10px;
+  color: #111827;
+}
+.word { font-size: 24px; font-weight: 800; color: #0f172a; margin-bottom: 15px; }
+.category-tag { font-size: 12px; color: #6366f1; letter-spacing: 1px; margin-bottom: 5px; }
+.example {
+  background-color: #f8fafc; color: #334155; padding: 20px;
+  border-radius: 12px; margin-bottom: 20px; text-align: left;
+  line-height: 1.6; font-size: 22px; border: 1px solid #e2e8f0;
+}
+.translation {
+  background-color: #f1f3f5;
+  color: #6b7280;
+  padding: 10px 15px;
+  border-radius: 8px;
+  margin-top: -12px;
+  margin-bottom: 20px;
+  text-align: left;
+  line-height: 1.5;
+  font-size: 17px;
+  font-weight: 400;
+  border: 1px solid #e0e0e0;
+  border-top: none;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+.options-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 10px;
+}
+.opt-item {
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  padding: 12px;
+  border-radius: 10px;
+  text-align: left;
+  font-size: 18px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+.gemini-button {
+  background: linear-gradient(to right, #6366f1 0%, #a855f7 100%);
+  color: #ffffff; border-radius: 12px; padding: 10px 20px;
+  font-size: 18px; font-weight: bold; display: inline-flex; margin-bottom: 15px;
+}
+.gemini-result-box {
+  background-color: #f1f3f5; padding: 15px; border-radius: 8px;
+  text-align: left; line-height: 1.6; font-size: 18px; border: 1px solid #e0e0e0;
+}
+.gemini-result-box strong { color: #6366f1; }
+.gemini-result-box p { margin: 10px 0 0; }
+.deck {
+  text-align: right;
+  font-size: 11px;
+  color: #9ca3af;
+  font-weight: 400;
+  margin-top: 16px;
+}
+.correct-option {
+  background-color: #eaf5ec !important;
+  color: #1e6531 !important;
+  border-color: #22c55e !important;
+  font-weight: 700 !important;
+}
+
+/* --- 다크 모드 (Night Mode) --- */
+.card.nightMode {
+  background: #1f2937;
+  color: #f3f4f6;
+  border-color: #374151;
+}
+.card.nightMode hr {
+  border-top-color: #374151;
+}
+.card.nightMode .title {
+  color: #f9fafb;
+}
+.card.nightMode .word {
+  color: #f8fafc;
+}
+.card.nightMode .example {
+  background-color: #374151;
+  color: #f1f5f9;
+  border-color: #4b5563;
+}
+.card.nightMode .translation {
+  background-color: #1f2937;
+  color: #9ca3af;
+  border-color: #374151;
+}
+.card.nightMode .opt-item {
+  background: #374151;
+  color: #f1f5f9;
+  border-color: #4b5563;
+}
+.card.nightMode .correct-option {
+  background-color: #064e3b !important;
+  color: #34d399 !important;
+  border-color: #10b981 !important;
+}
+.card.nightMode .gemini-result-box {
+  background-color: #374151;
+  color: #f1f5f9;
+  border-color: #4b5563;
+}
+.card.nightMode .deck {
+  color: #6b7280;
+}"""
     },
     "English Vocabulary": {
         "deck_assignment": [
@@ -368,6 +510,36 @@ NOTE_TYPES_CONFIG = {
   font-size: 14px;
   font-weight: 500;
   border: 1px solid #e2e8f0;
+}
+
+/* --- 다크 모드 (Night Mode) --- */
+.card.nightMode {
+  background: #1f2937;
+  color: #f3f4f6;
+  border-color: #374151;
+}
+.card.nightMode hr {
+  border-top-color: #374151;
+}
+.nightMode .pos {
+  box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+}
+.nightMode .v { background: #1e3a8a; color: #bfdbfe; border-color: #1e40af; }
+.nightMode .n { background: #78350f; color: #fde68a; border-color: #92400e; }
+.nightMode .adj { background: #4c1d95; color: #ddd6fe; border-color: #5b21b6; }
+.nightMode .adv { background: #064e3b; color: #a7f3d0; border-color: #065f46; }
+.nightMode .idiom { background: #374151; color: #e5e7eb; border-color: #4b5563; }
+.nightMode .jargon { background: #7f1d1d; color: #fecaca; border-color: #991b1b; }
+.nightMode .prep { background: #831843; color: #fbcfe8; border-color: #9d174d; }
+.nightMode .conj { background: #164e63; color: #a5f3fc; border-color: #155e75; }
+.nightMode .title,
+.nightMode .word {
+  color: #f9fafb;
+}
+.nightMode .synonym-tag {
+  background: #374151;
+  color: #d1d5db;
+  border-color: #4b5563;
 }""",
         "templates": {
             "카드 1": {
@@ -580,6 +752,189 @@ NOTE_TYPES_CONFIG = {
   });
 })();
 </script>"""
+            }
+        }
+    },
+    "Knowledge Q&A": {
+        "deck_assignment": [
+            {"card": "Card 1", "target": "Knowledge"}
+        ],
+        "css": """/* --- 카드 기본 레이아웃 --- */
+.card {
+  font-family: '나눔고딕', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 20px;
+  font-weight: 600;
+  text-align: center;
+  color: #1f2937;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  width: min(90%, 720px);
+  margin: 24px auto;
+  padding: 24px;
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.05),
+    0 6px 12px rgba(0, 0, 0, 0.08);
+  transition: transform 0.15s ease, box-shadow 0.2s ease;
+}
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 4px 10px rgba(0, 0, 0, 0.08),
+    0 10px 20px rgba(0, 0, 0, 0.10);
+}
+@media (max-width: 1024px) {
+  .card {
+    width: 92%;
+    font-size: 18px;
+    padding: 18px;
+    margin: 18px auto;
+  }
+}
+.card hr {
+  border: none;
+  border-top: 1px solid #e5e7eb;
+  margin: 18px 0 20px;
+}
+.topic-tag {
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 700;
+  color: #4f46e5;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-radius: 999px;
+  padding: 4px 12px;
+  margin-bottom: 16px;
+  letter-spacing: 0.5px;
+}
+.question {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.5;
+  color: #111827;
+  margin-bottom: 10px;
+  word-break: keep-all;
+}
+.answer {
+  font-size: 26px;
+  font-weight: 800;
+  color: #1e40af;
+  margin-bottom: 16px;
+  word-break: keep-all;
+}
+.why-box {
+  background: #f8fafc;
+  color: #334155;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 16px 18px;
+  text-align: left;
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1.6;
+  margin-top: 14px;
+  word-break: keep-all;
+}
+.why-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #6366f1;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.source {
+  text-align: right;
+  font-size: 12px;
+  color: #9ca3af;
+  font-weight: 400;
+  margin-top: 16px;
+}
+.deck {
+  text-align: right;
+  font-size: 11px;
+  color: #9ca3af;
+  font-weight: 400;
+  margin-top: 12px;
+}
+
+/* --- 다크 모드 (Night Mode) --- */
+.card.nightMode {
+  background: #1f2937;
+  color: #f3f4f6;
+  border-color: #374151;
+}
+.card.nightMode hr {
+  border-top-color: #374151;
+}
+.nightMode .topic-tag {
+  background: #312e81;
+  color: #c7d2fe;
+  border-color: #4338ca;
+}
+.nightMode .question {
+  color: #f9fafb;
+}
+.nightMode .answer {
+  color: #93c5fd;
+}
+.nightMode .why-box {
+  background: #111827;
+  color: #cbd5e1;
+  border-color: #374151;
+}
+.nightMode .why-title {
+  color: #a5b4fc;
+}
+.nightMode .source,
+.nightMode .deck {
+  color: #6b7280;
+}""",
+        "templates": {
+            "Card 1": {
+                "Front": """<div class="question">{{질문}}</div>
+<div class="deck">{{Deck}}</div>""",
+                "Back": """<style>
+@keyframes cardFlip {
+  0%   { opacity:0; transform: perspective(700px) rotateY(-90deg) scale(0.95); }
+  60%  { opacity:1; transform: perspective(700px) rotateY(6deg) scale(1.01); }
+  80%  { transform: perspective(700px) rotateY(-2deg) scale(1.0); }
+  100% { opacity:1; transform: perspective(700px) rotateY(0deg) scale(1); }
+}
+@keyframes fadeUp {
+  from { opacity:0; transform: translateY(8px); }
+  to   { opacity:1; transform: translateY(0); }
+}
+.card { animation: none; }
+.card.anim-ready { animation: cardFlip 0.5s cubic-bezier(0.4,0,0.2,1) both; }
+.card.anim-ready hr ~ * { animation: fadeUp 0.3s ease 0.3s both; }
+</style>
+<script>
+(function() {
+  function trigger() {
+    var c = document.querySelector(".card");
+    if (c) { c.classList.remove("anim-ready"); void c.offsetWidth; c.classList.add("anim-ready"); }
+  }
+  if (typeof onUpdateHook !== "undefined") { onUpdateHook.push(trigger); } else { trigger(); }
+})();
+</script>
+
+<div class="question">{{질문}}</div>
+
+<hr>
+
+<div class="answer">{{정답}}</div>
+
+{{#설명}}
+<div class="why-box">
+  <div class="why-title">💡 Why It Matters</div>
+  {{설명}}
+</div>
+{{/설명}}
+
+{{#출처}}<div class="source">📚 {{출처}}</div>{{/출처}}
+<div class="deck">{{Deck}}</div>"""
             }
         }
     }

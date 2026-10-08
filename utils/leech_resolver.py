@@ -40,7 +40,7 @@ class LeechResolver:
 
     @staticmethod
     def get_top_lapses(limit=30):
-        query = f'note:"{MODEL_VOCAB}"'
+        query = f'note:"{MODEL_VOCAB}" -is:new'
         card_ids = AnkiConnector.invoke("findCards", query=query)
         if not card_ids:
             return []
@@ -176,19 +176,49 @@ class LeechResolver:
         else:
             UI.info("추가된 새로운 문장이 없습니다.")
 
-        # If Top Leech mode, reset the original cards
+        # If Top Leech mode, reset the original cards by re-creating them (to zero out all stats)
         if mode == "2" and selected_note_ids:
-            try:
-                # Find all cards associated with these notes
-                all_card_ids = []
-                for nid in selected_note_ids:
-                    cids = AnkiConnector.invoke("findCards", query=f"nid:{nid}")
-                    all_card_ids.extend(cids)
-                
-                if all_card_ids:
-                    AnkiConnector.invoke("forgetCards", cards=all_card_ids)
-                    UI.info(f"🔄 {len(all_card_ids)}개의 기존 리치 카드를 초기화했습니다.")
-            except Exception as e:
-                UI.error(f"카드 초기화 실패: {e}")
+            with UI.wait("기존 카드 통계 초기화 중..."):
+                try:
+                    # 1. Fetch current note info
+                    notes_info = AnkiConnector.invoke("notesInfo", notes=selected_note_ids)
+                    
+                    # To get deckName, we need cardsInfo
+                    card_ids = []
+                    for n in notes_info:
+                        if n.get('cards'):
+                            card_ids.extend(n['cards'])
+                    
+                    deck_map = {} # noteId -> deckName
+                    if card_ids:
+                        cards_info = AnkiConnector.invoke("cardsInfo", cards=card_ids)
+                        for c in cards_info:
+                            deck_map[c['note']] = c['deckName']
+
+                    # 2. Delete the old notes
+                    AnkiConnector.invoke("deleteNotes", notes=selected_note_ids)
+                    
+                    # 3. Re-add as new notes (this zeroes out lapses/reps)
+                    new_notes = []
+                    for note in notes_info:
+                        d_name = deck_map.get(note['noteId'])
+                        if not d_name:
+                            # Fallback to a default if somehow not found, 
+                            # but it should be there if cards existed.
+                            from config import CURRENT_TARGET
+                            d_name = CURRENT_TARGET
+                            
+                        new_notes.append({
+                            "deckName": d_name,
+                            "modelName": note['modelName'],
+                            "fields": {k: v['value'] for k, v in note['fields'].items()},
+                            "tags": note['tags']
+                        })
+                    
+                    if new_notes:
+                        AnkiConnector.invoke("addNotes", notes=new_notes)
+                        UI.info(f"🔄 {len(new_notes)}개의 단어를 완전히 초기화하여 재등록했습니다 (통계 0).")
+                except Exception as e:
+                    UI.error(f"카드 초기화 실패: {e}")
             
         UI.ask("계속하려면 Enter를 누르세요")

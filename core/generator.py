@@ -66,9 +66,10 @@ class SituationGenerator:
         2. **[이미 알고 있는 단어 목록]에 있는 단어는 절대로 포함하지 마십시오.** 
         3. 이미 아는 단어라면, 그보다 더 격식 있거나 난이도 높은 유의어/대안 표현을 발굴하십시오.
         4. 영어 학습 중급자~고급자(TOEFL 90~100점 이상 수준)에게 도움될 만한 수준 있는 숙어(Idiom)와 구동사(Phrasal verb)를 적극 활용하십시오.
-        5. 문장은 4단어 이상, 20단어 이하로 구성하십시오.
-        6. 문장은 문자열 리스트로, 단어는 {{"단어": "word", "뜻": "meaning"}} 형식의 객체 리스트로 생성하십시오.
-        7. "sentences" (문자열 리스트)와 "vocab" (객체 리스트) 두 개의 키를 가진 단일 JSON 객체로 반환해주십시오.
+        5. **플레이스홀더 규칙 (필수)**: 숙어나 구동사를 생성할 때 'someone', 'something', 'somebody', 'sb', 'sth' 등은 절대 사용하지 말고, 이를 대문자 기호 'A', 'B' 및 'V-ing' 등으로 변환/표준화하여 단어를 정의하십시오. (예: 'spring something on someone' -> 'spring A on B', 'prevent somebody from doing something' -> 'prevent A from V-ing')
+        6. 문장은 4단어 이상, 20단어 이하로 구성하십시오.
+        7. 문장은 문자열 리스트로, 단어는 {{"단어": "word", "뜻": "meaning"}} 형식의 객체 리스트로 생성하십시오.
+        8. "sentences" (문자열 리스트)와 "vocab" (객체 리스트) 두 개의 키를 가진 단일 JSON 객체로 반환해주십시오.
         """
 
         try:
