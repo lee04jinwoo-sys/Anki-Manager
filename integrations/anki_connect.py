@@ -2,11 +2,16 @@ import requests
 import os
 from config import ANKI_URL
 
+# AnkiConnect는 항상 로컬(localhost) 통신이므로 http_proxy 등 환경변수 프록시를 무시한다.
+_SESSION = requests.Session()
+_SESSION.trust_env = False
+_TIMEOUT_SEC = 60
+
 class AnkiConnector:
     @staticmethod
     def invoke(action, **params):
         try:
-            response = requests.post(ANKI_URL, json={"action": action, "version": 6, "params": params}).json()
+            response = _SESSION.post(ANKI_URL, json={"action": action, "version": 6, "params": params}, timeout=_TIMEOUT_SEC).json()
             if 'error' in response and response['error']:
                 # 중복 에러는 호출부에서 처리할 수 있도록 에러 메시지 그대로 유지
                 raise Exception(response['error'])
