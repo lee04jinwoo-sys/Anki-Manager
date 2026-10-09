@@ -34,6 +34,7 @@ def get_stats():
 def get_vocab_list(
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
+    filter_mode: Optional[str] = Query(None, description="필터 모드 (leech, zero, low, all)"),
     max_links: Optional[int] = Query(None, description="최대 연결 수 필터 (예: 0개, 1개 이하)"),
     search: Optional[str] = Query(None, description="단어 또는 뜻 검색")
 ):
@@ -42,6 +43,7 @@ def get_vocab_list(
         return LinkManager.get_vocab_list(
             limit=limit,
             offset=offset,
+            filter_mode=filter_mode,
             max_links=max_links,
             search=search
         )

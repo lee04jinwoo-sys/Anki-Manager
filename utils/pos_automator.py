@@ -1,9 +1,11 @@
+import logging
 import nltk
 from integrations.anki_connect import AnkiConnector
 from config import MODEL_VOCAB
-from utils.ui import UI
 
 from nltk.corpus import wordnet
+
+logger = logging.getLogger("PosAutomator")
 
 # NLTK 필수 데이터 다운로드
 def setup_nltk():
@@ -12,13 +14,13 @@ def setup_nltk():
         nltk.data.find('taggers/averaged_perceptron_tagger')
         nltk.data.find('corpora/wordnet')
     except LookupError:
-        with UI.wait("NLTK 데이터를 다운로드 중입니다..."):
-            nltk.download('punkt')
-            nltk.download('averaged_perceptron_tagger')
-            nltk.download('wordnet')
-            nltk.download('omw-1.4')
-            nltk.download('punkt_tab')
-            nltk.download('averaged_perceptron_tagger_eng')
+        logger.info("NLTK 데이터를 다운로드 중입니다...")
+        nltk.download('punkt')
+        nltk.download('averaged_perceptron_tagger')
+        nltk.download('wordnet')
+        nltk.download('omw-1.4')
+        nltk.download('punkt_tab')
+        nltk.download('averaged_perceptron_tagger_eng')
 
 def get_simple_pos(word):
     """
@@ -76,51 +78,44 @@ def get_simple_pos(word):
     # 그 외의 모든 조합 -> idiom
     return "idiom"
 
-def run_pos_automation():
+def run_pos_automation() -> int:
     setup_nltk()
-    
-    UI.header("NLTK 품사 자동 완성")
+    logger.info("NLTK 품사 자동 완성 시작")
     
     # 품사 필드가 비어있는 카드 검색
     query = f'note:"{MODEL_VOCAB}" "품사:"'
     try:
         note_ids = AnkiConnector.find_notes(query)
     except Exception as e:
-        UI.error(f"Anki 연결 실패: {e}")
-        return
+        logger.error(f"Anki 연결 실패: {e}")
+        return 0
 
     if not note_ids:
-        UI.success("품사를 채울 카드가 없습니다. (이미 모두 채워져 있습니다)")
-        return
+        logger.info("품사를 채울 카드가 없습니다. (이미 모두 채워져 있습니다)")
+        return 0
 
     notes_info = AnkiConnector.get_notes_info(note_ids)
-    UI.info(f"총 {len(notes_info)}개의 카드 분석 시작...")
+    logger.info(f"총 {len(notes_info)}개의 카드 분석 시작...")
 
     updated_count = 0
-    
-    with UI.progress() as progress:
-        task = progress.add_task("[cyan]품사 분석 및 업데이트 중...", total=len(notes_info))
+    for n in notes_info:
+        note_id = n['noteId']
+        word = n['fields'].get('단어', {}).get('value', '').strip()
         
-        for n in notes_info:
-            note_id = n['noteId']
-            word = n['fields'].get('단어', {}).get('value', '').strip()
+        if not word:
+            continue
             
-            if not word:
-                progress.update(task, advance=1)
-                continue
-                
-            new_pos = get_simple_pos(word)
-            
-            if new_pos:
-                try:
-                    AnkiConnector.update_note_fields(note_id, {"품사": new_pos})
-                    updated_count += 1
-                except Exception as e:
-                    UI.error(f"업데이트 실패 ({word}): {e}")
-            
-            progress.update(task, advance=1)
+        new_pos = get_simple_pos(word)
+        
+        if new_pos:
+            try:
+                AnkiConnector.update_note_fields(note_id, {"품사": new_pos})
+                updated_count += 1
+            except Exception as e:
+                logger.error(f"업데이트 실패 ({word}): {e}")
 
-    UI.success(f"🎉 총 {updated_count}개의 카드에 품사가 자동으로 입력되었습니다.")
+    logger.info(f"총 {updated_count}개의 카드에 품사가 자동으로 입력되었습니다.")
+    return updated_count
 
 if __name__ == "__main__":
     run_pos_automation()

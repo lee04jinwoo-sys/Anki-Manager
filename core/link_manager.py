@@ -23,15 +23,21 @@ BACKUP_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def get_db_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = sqlite3.connect(str(DB_PATH), timeout=10.0)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode = WAL;")
+    conn.execute("PRAGMA busy_timeout = 5000;")
+    conn.execute("PRAGMA synchronous = NORMAL;")
     return conn
 
 
 def init_db():
-    """SQLite 링크 매핑 및 캐시 테이블 초기화"""
+    """SQLite 링크 매핑 및 캐시 테이블 초기화 (WAL 모드 적용)"""
     with get_db_connection() as conn:
         cursor = conn.cursor()
+        cursor.execute("PRAGMA journal_mode = WAL;")
+        cursor.execute("PRAGMA busy_timeout = 5000;")
+        cursor.execute("PRAGMA synchronous = NORMAL;")
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS links (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -416,11 +422,22 @@ class LinkManager:
             cursor.execute("SELECT COUNT(*) FROM vocab_cache WHERE link_count = 0")
             unlinked_vocab = cursor.fetchone()[0]
 
+            leech_count = 0
+            try:
+                leech_cards = AnkiConnector.invoke(
+                    "findCards",
+                    query=f'note:"{MODEL_VOCAB}" (prop:ease<=1.3 OR prop:lapses>=4) -is:suspended'
+                ) or []
+                leech_count = len(leech_cards)
+            except Exception:
+                pass
+
             return {
                 "total_vocab": total_vocab,
                 "total_links": total_links,
                 "linked_sentences": linked_sentences,
-                "unlinked_vocab": unlinked_vocab
+                "unlinked_vocab": unlinked_vocab,
+                "leech_count": leech_count
             }
 
     @classmethod
@@ -428,17 +445,79 @@ class LinkManager:
         cls,
         limit: int = 50,
         offset: int = 0,
+        filter_mode: Optional[str] = None,
         max_links: Optional[int] = None,
         search: Optional[str] = None
     ) -> Dict[str, Any]:
         init_db()
+
+        # Handle leech filter mode
+        if filter_mode == "leech":
+            try:
+                anki_q = f'note:"{MODEL_VOCAB}" (prop:ease<=1.3 OR prop:lapses>=4) -is:suspended'
+                if search:
+                    anki_q += f' "{search}"'
+                card_ids = AnkiConnector.invoke("findCards", query=anki_q) or []
+                total_items = len(card_ids)
+
+                page_ids = card_ids[offset:offset + limit]
+                cards_info = AnkiConnector.invoke("cardsInfo", cards=page_ids) or []
+                note_ids = [c["note"] for c in cards_info]
+
+                with get_db_connection() as conn:
+                    cursor = conn.cursor()
+                    placeholders = ','.join('?' * len(note_ids)) if note_ids else '0'
+                    cursor.execute(
+                        f"SELECT note_id, word, meaning, pos, link_count FROM vocab_cache WHERE note_id IN ({placeholders})",
+                        note_ids
+                    )
+                    cache_map = {row["note_id"]: dict(row) for row in cursor.fetchall()}
+
+                items = []
+                for c in cards_info:
+                    nid = c["note"]
+                    cached = cache_map.get(nid, {})
+                    fields = c.get("fields", {})
+                    word = cached.get("word") or fields.get("단어", {}).get("value", "")
+                    meaning = cached.get("meaning") or fields.get("뜻", {}).get("value", "")
+                    pos = cached.get("pos") or fields.get("품사", {}).get("value", "")
+                    link_cnt = cached.get("link_count", 0)
+                    ease_val = round(c.get("factor", 1300) / 10.0, 1)
+
+                    items.append({
+                        "note_id": nid,
+                        "card_id": c.get("cardId"),
+                        "word": clean_text(word),
+                        "meaning": clean_text(meaning),
+                        "pos": pos,
+                        "link_count": link_cnt,
+                        "lapses": c.get("lapses", 0),
+                        "ease": ease_val,
+                        "reps": c.get("reps", 0)
+                    })
+
+                items.sort(key=lambda x: -x.get("lapses", 0))
+                return {
+                    "total": total_items,
+                    "limit": limit,
+                    "offset": offset,
+                    "items": items
+                }
+            except Exception as e:
+                # Fallback to standard DB query on failure
+                pass
+
         with get_db_connection() as conn:
             cursor = conn.cursor()
 
             query = "SELECT note_id, word, meaning, pos, link_count FROM vocab_cache WHERE 1=1"
             params: List[Any] = []
 
-            if max_links is not None:
+            if filter_mode == "zero" or max_links == 0:
+                query += " AND link_count = 0"
+            elif filter_mode == "low" or max_links == 1:
+                query += " AND link_count <= 1"
+            elif max_links is not None:
                 query += " AND link_count <= ?"
                 params.append(max_links)
 
@@ -541,3 +620,74 @@ class LinkManager:
         # lapses 내림차순 정렬
         matched.sort(key=lambda x: -x['lapses'])
         return matched[:count]
+
+    @classmethod
+    def index_single_sentence(cls, sentence_note_id: int, sentence_text: str):
+        """새로 생성된 단일 문장을 vocab_cache와 대조하여 즉시 links.db에 증분 반영"""
+        init_db()
+        cleaned_sentence = clean_text(sentence_text).strip()
+        if not cleaned_sentence:
+            return
+
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT note_id, word FROM vocab_cache")
+            vocabs = cursor.fetchall()
+
+            links_to_add = []
+            vocab_ids_to_increment = set()
+
+            for row in vocabs:
+                v_id = row["note_id"]
+                v_word = row["word"]
+                regex = PatternMatcher.build_regex(v_word)
+                if regex and regex.search(cleaned_sentence):
+                    links_to_add.append((v_id, v_word, sentence_note_id, cleaned_sentence))
+                    vocab_ids_to_increment.add(v_id)
+
+            if links_to_add:
+                cursor.executemany("""
+                    INSERT OR IGNORE INTO links (vocab_note_id, vocab_word, sentence_note_id, sentence_text)
+                    VALUES (?, ?, ?, ?)
+                """, links_to_add)
+                for v_id in vocab_ids_to_increment:
+                    cursor.execute("UPDATE vocab_cache SET link_count = link_count + 1 WHERE note_id = ?", (v_id,))
+                conn.commit()
+
+    @classmethod
+    def index_single_vocab(cls, vocab_note_id: int, vocab_word: str, meaning: str = "", pos: str = ""):
+        """새로 생성된 단일 어휘를 vocab_cache 및 기존 문장들과 즉시 매칭하여 증분 반영"""
+        init_db()
+        cleaned_word = clean_text(vocab_word).strip()
+        if not cleaned_word:
+            return
+
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT OR REPLACE INTO vocab_cache (note_id, word, meaning, pos, link_count)
+                VALUES (?, ?, ?, ?, (SELECT COALESCE(COUNT(*), 0) FROM links WHERE vocab_note_id = ?))
+            """, (vocab_note_id, cleaned_word, clean_text(meaning), clean_text(pos), vocab_note_id))
+
+            regex = PatternMatcher.build_regex(cleaned_word)
+            if regex:
+                cursor.execute("SELECT DISTINCT sentence_note_id, sentence_text FROM links")
+                existing_sentences = cursor.fetchall()
+                links_to_add = []
+                for s_row in existing_sentences:
+                    s_id = s_row["sentence_note_id"]
+                    s_text = s_row["sentence_text"]
+                    if regex.search(s_text):
+                        links_to_add.append((vocab_note_id, cleaned_word, s_id, s_text))
+                if links_to_add:
+                    cursor.executemany("""
+                        INSERT OR IGNORE INTO links (vocab_note_id, vocab_word, sentence_note_id, sentence_text)
+                        VALUES (?, ?, ?, ?)
+                    """, links_to_add)
+                    cursor.execute("""
+                        UPDATE vocab_cache 
+                        SET link_count = (SELECT COUNT(*) FROM links WHERE vocab_note_id = ?) 
+                        WHERE note_id = ?
+                    """, (vocab_note_id, vocab_note_id))
+            conn.commit()
+

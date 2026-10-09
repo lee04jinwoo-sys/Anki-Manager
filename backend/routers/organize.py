@@ -1,77 +1,72 @@
-import threading
-from fastapi import APIRouter
-from utils.organizer import run_organizer
-from integrations.audio import AnkiTTSFiller
-from core.completer import run_universal_field_completion
-from utils.pos_automator import run_pos_automation
-from utils.cluster import run_clustering
-from utils.cleaner import clean_duplicates
-from integrations.anki_connect import AnkiConnector
-from backend.routers.workflow import emit_log, workflow_state
+"""Organize / Maintenance Router.
 
+Consolidates missing audio, empty fields, and rule-based deck moves
+into a unified maintenance workflow via maintenance_service.
+"""
+from __future__ import annotations
+
+import logging
+from typing import List, Optional
+from fastapi import APIRouter
+from pydantic import BaseModel, Field
+
+from backend.schemas.jobs import ActionResult
+from backend.schemas.maintenance import StepInfo, MaintenanceRunRequest
+from backend.services import maintenance_service
+from backend.services.jobs import jobs
+from integrations.anki_connect import AnkiConnector
+
+logger = logging.getLogger("AnkiManagerOrganize")
 router = APIRouter(prefix="/api/organize", tags=["organize"])
 
-def _run_bg_task(task_name: str, target_fn, success_msg: str):
-    if workflow_state["is_running"]:
-        return {"status": "error", "message": "이미 다른 작업이 실행 중입니다."}
 
-    workflow_state["is_running"] = True
-    workflow_state["source"] = task_name
-    workflow_state["progress"] = 15
-    workflow_state["status"] = "running"
-    workflow_state["logs"] = []
-    workflow_state["candidates"] = {"sentences": [], "vocab": []}
+@router.get("/steps")
+def get_available_steps() -> List[StepInfo]:
+    """Returns catalog of all available maintenance steps."""
+    return maintenance_service.step_catalog()
 
-    emit_log(f"[{task_name}] 작업 시작...", progress=15, level="info")
 
-    def worker():
-        try:
-            emit_log(f"[{task_name}] Anki 데이터 분석 및 실행 중...", progress=40, level="info")
-            target_fn()
-            emit_log(f"✅ {success_msg}", progress=100, level="success")
-            workflow_state["status"] = "success"
-        except Exception as e:
-            emit_log(f"❌ [{task_name}] 오류 발생: {str(e)}", level="error")
-            workflow_state["status"] = "error"
-        finally:
-            workflow_state["is_running"] = False
+@router.post("/run")
+def run_unified_maintenance(req: Optional[MaintenanceRunRequest] = None) -> ActionResult:
+    """Run consolidated maintenance pipeline (fields, audio, deck_move, etc.)."""
+    steps = req.steps if req and req.steps else None
+    return maintenance_service.start_job(steps)
 
-    thread = threading.Thread(target=worker, daemon=True)
-    thread.start()
-    return {"status": "success", "message": f"{task_name} 작업을 시작했습니다."}
 
+# Individual step triggers (for granular execution or legacy callers)
 @router.post("/audio")
-def organize_audio():
-    return _run_bg_task("누락된 TTS 오디오 생성", AnkiTTSFiller.run_audio_addition, "누락된 TTS 오디오 생성이 완료되었습니다.")
+def organize_audio() -> ActionResult:
+    return maintenance_service.start_job(["audio"])
+
 
 @router.post("/completion")
-def organize_completion():
-    return _run_bg_task("빈 필드 AI 자동 완성", run_universal_field_completion, "빈 필드 AI 자동 완성이 완료되었습니다.")
+def organize_completion() -> ActionResult:
+    return maintenance_service.start_job(["fields"])
+
 
 @router.post("/pos")
-def organize_pos():
-    return _run_bg_task("품사 자동 분류", run_pos_automation, "품사 자동 분류가 완료되었습니다.")
+def organize_pos() -> ActionResult:
+    return maintenance_service.start_job(["pos"])
 
-@router.post("/cluster")
-def organize_cluster():
-    return _run_bg_task("AI 유의어 맵 업데이트", lambda: run_clustering(full_recluster=True), "AI 유의어 맵 업데이트가 완료되었습니다.")
 
 @router.post("/organize")
 @router.post("/organizer")
-def organize_cards():
-    return _run_bg_task("카드 규칙별 덱 이동", run_organizer, "카드 규칙별 덱 이동 및 정리가 완료되었습니다.")
+def organize_cards() -> ActionResult:
+    return maintenance_service.start_job(["deck_move"])
+
 
 @router.post("/duplicates")
-def organize_duplicates():
-    return _run_bg_task("중복 카드 정리", clean_duplicates, "중복 카드 정리가 완료되었습니다.")
+def organize_duplicates() -> ActionResult:
+    return maintenance_service.start_job(["duplicates"])
+
 
 @router.post("/sync")
-def organize_sync():
-    emit_log("Anki Web 동기화 요청 중...", progress=50, level="info")
+def organize_sync() -> ActionResult:
+    jobs.emit("Anki Web 동기화 요청 중...", progress=50, level="info")
     try:
-        AnkiConnector.invoke('sync')
-        emit_log("✅ Anki Web 동기화 완료!", progress=100, level="success")
-        return {"status": "success", "message": "Anki Web 동기화가 완료되었습니다."}
+        AnkiConnector.invoke("sync")
+        jobs.emit("Anki Web 동기화 완료", progress=100, level="success")
+        return ActionResult(status="success", message="Anki Web 동기화가 완료되었습니다.")
     except Exception as e:
-        emit_log(f"❌ 동기화 실패: {str(e)}", level="error")
-        return {"status": "error", "message": str(e)}
+        jobs.emit(f"동기화 실패: {e}", level="error")
+        return ActionResult(status="error", message=str(e))

@@ -155,7 +155,7 @@ class NoteCompleter:
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=NOTE_COMPLETOR_MAX_WORKERS) as executor:
             prompt_template = """
-            다음 단어 데이터 리스트에 대해, 뜻, 품사, 유의어, 예문, 설명을 포함한 JSON 객체 리스트를 'vocab' 키에 담아 반환하세요.
+            다음 단어 데이터 리스트에 대해, 뜻, 품사, 예문, 설명을 포함한 JSON 객체 리스트를 'vocab' 키에 담아 반환하세요.
             이미 '뜻'이나 '단어' 정보가 있다면 이를 활용하여 내용을 완성하십시오.
             특히 '설명' 필드는 의미의 미세한 차이나 뉘앙스를 한국어로 상세히 설명해야 합니다.
             
@@ -185,7 +185,7 @@ class NoteCompleter:
                 f"기존 데이터: {current_fields}\n"
                 f"누락된 필드: {missing_fields}\n\n"
                 f"시스템 지침에 정의된 [단어 필드 작성 규칙]을 엄격히 준수하여 누락된 필드를 채우세요.\n"
-                f"특히 '설명' 필드는 반드시 ①의미 뉘앙스 정의, ②유의어 비교, ③콜로케이션 마무리라는 3단계 공식을 따라야 합니다.\n"
+                f"특히 '설명' 필드는 반드시 ①의미 뉘앙스 정의, ②콜로케이션 마무리라는 2단계 공식을 따라야 합니다.\n"
                 f"기존 데이터와 일관성을 유지하며 JSON 형식으로 누락된 필드만 반환하세요."
             )
         elif "Sentence" in model_name:
@@ -231,7 +231,7 @@ def run_universal_field_completion(pbar=None):
         },
         MODEL_VOCAB: {
             "triggers": ["뜻", "품사", "예문", "설명"],
-            "all_fields": ["단어", "뜻", "품사", "유의어", "예문", "설명"]
+            "all_fields": ["단어", "뜻", "품사", "예문", "설명"]
         },
         MODEL_GRAMMAR: {
             "triggers": ["해설", "설명", "보기1", "보기2", "보기3"],
@@ -399,7 +399,7 @@ def run_note_completion(sentences_data, vocab_data, pbar=None, step_points=0, in
                 "단어": word, 
                 "뜻": v['뜻'], 
                 "품사": pos_tag, 
-                "유의어": v['유의어'], 
+                "유의어": "", 
                 "예문": v['예문'], 
                 "설명": v['설명']
             }

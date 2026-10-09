@@ -1,0 +1,1 @@
+"""Anki Manager web backend."""
