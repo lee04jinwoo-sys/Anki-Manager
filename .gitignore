@@ -33,3 +33,6 @@ Thumbs.db
 data/backups/
 data/*.db
 scripts/__pycache__/
+
+# One-off migration logs
+data/logs/

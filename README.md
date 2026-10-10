@@ -1,119 +1,68 @@
-# 🚀 Anki Manager CLI (안키 매니저)
+# Anki Manager
 
-[English](#english) | [한국어](#한국어)
+영어 학습용 Anki 덱(Vocabulary / Sentence / Grammar)을 관리하는 **로컬 웹 대시보드**입니다.
+FastAPI 백엔드가 AnkiConnect와 Gemini를 호출하고, React 프론트엔드가 `http://localhost:8001`에서 동작합니다.
+(이전 CLI 메뉴와 YouTube 수집 기능은 v2에서 제거되었습니다.)
 
----
+## 기능
 
-## 한국어
+| 영역 | 내용 |
+|---|---|
+| 대시보드 | English 하위 덱별 신규/Due/학습 중/성숙 카드, 30일 정답률, Leech 현황, Obsidian Inbox 대기 수 |
+| Obsidian 가져오기 | `Anki_Inbox.md`의 `## Sentences` / `## Vocab` 항목을 선택 → Gemini로 뜻·예문·번역 보강 → Anki 등록. **실제로 등록된 항목만** Inbox에서 지웁니다. |
+| 노트 정리 | 빈 필드 채우기(AI), TTS 오디오, 규칙별 덱 이동, 품사 자동 입력(NLTK), 중복 정리. 백그라운드 작업으로 실행되며 단계 사이에서 취소할 수 있습니다. |
+| 링크 매니저 | 단어 ↔ 문장 역색인(`data/links.db`), 연결이 적은 단어에 예문 일괄 생성, 카드 뒷면 어휘 강조 템플릿 주입 |
+| 청크 승격 | Leech 단어를 고빈도 연어/청크로 교체하고 카드를 새 카드로 초기화 |
+| 디자인 | 카드 템플릿·CSS를 `data/design_config.json`으로 백업/복원 |
+| Agent Bridge | `agent_bridge.py` — 대화 중 만든 문장/단어/문법을 CLI로 바로 등록 (`CLAUDE.md` 참고) |
 
-안키(Anki) 워크플로우를 자동화하는 강력한 모듈형 CLI 도구입니다. 콘텐츠를 수집하고, AI로 노트를 풍성하게 만들며, 카드 디자인을 관리하고 학습 진행 상황을 추적합니다.
+### 되돌리기 관련 동작
 
-### ✨ 주요 기능
+- **중복 정리**는 노트를 삭제하지 않습니다. 같은 값(HTML·대소문자 무시) 중 리뷰가 가장 많은 노트를 남기고, 나머지에 `dup::review` 태그를 달아 일시정지합니다. 확인 후 Anki에서 직접 지우세요.
+- **청크 승격**은 변경 전 노트 필드와 카드 스케줄 상태를 `data/backups/promote/<note_id>_<시각>.json`에 저장하고, 저장에 실패하면 중단합니다.
+- **템플릿 주입**은 적용 전 `data/template_backups/`에 원본을 저장합니다.
+- 서버는 로컬 출처(`localhost`, `127.0.0.1`)가 아닌 웹페이지에서 온 쓰기 요청을 403으로 거부합니다.
 
-#### 1. 노트 추가 (스마트 자동화)
-*   **YouTube**: 자막을 가져와 핵심 문장과 단어를 자동으로 선택합니다.
-*   **Situation**: 간단한 상황 설명만으로 상황별 학습 자료를 생성합니다.
-*   **Obsidian**: 옵시디언의 "Inbox" 노트를 안키로 직접 동기화합니다.
-*   **AI 보강**: 정의, 예문, 번역을 자동으로 채워줍니다.
+## 설치
 
-#### 2. 노트 정리 (유지 관리)
-*   **오디오 채우기**: 카드에 고품질 TTS 오디오를 자동으로 추가합니다.
-*   **필드 완성**: 모든 노트 모델에서 누락된 필드를 자동 완성합니다.
-*   **자동 정리**: 스마트 카드 이동 및 덱 구성 기능을 제공합니다.
-*   **중복 제거**: 불필요한 중복 카드를 삭제하여 컬렉션을 가볍게 유지합니다.
+필수: Python 3.10+, Node 18+, [Anki](https://apps.ankiweb.net/) + [AnkiConnect](https://ankiweb.net/shared/info/2055405234)
 
-#### 3. 디자인 관리
-*   **가져오기/내보내기**: 안키 카드 템플릿과 CSS를 JSON 파일로 관리합니다.
-*   **버전 관리**: 카드 디자인을 안전하게 보관하고 다른 프로필과 쉽게 공유합니다.
+```bash
+python -m venv .venv
+.venv/bin/pip install -r requirements.txt
+cd frontend && npm install && npm run build && cd ..
+```
 
-#### 4. 통계 및 분석
-*   **성과 추적**: 덱 유지율과 새 카드 진행률을 한눈에 확인합니다.
-*   **시각적 보고서**: 터미널에서 깔끔한 표 형태로 통계를 제공합니다.
+`.env`에 `GOOGLE_API_KEY`(Gemini)를 넣습니다. Google Cloud TTS 인증이 없으면 gTTS로 대체됩니다.
+Obsidian 볼트 경로와 Inbox 파일명은 `data/settings.json`의 `OBSIDIAN_VAULT_PATH`, `OBSIDIAN_INBOX_FILE`로 바꿀 수 있습니다.
 
-### ⌨️ 고급 인터랙티브 선택기
-최신 색상 코드가 적용된 인터랙티브 선택기를 제공합니다:
-*   **시각적 피드백**: 선택 상태를 [초록]ON[/] / [빨강]OFF[/] 배경으로 표시합니다.
-*   **일괄 작업**: `A` (모두 선택), `N` (선택 해제).
-*   **언어 지원**: 영어 단축키뿐만 아니라 한국어(`ㅁ`, `ㅜ`, `ㅊ`, `ㅂ`) 단축키도 지원합니다.
+## 실행
 
-### 🚀 시작하기
+```bash
+.venv/bin/python main.py
+```
 
-#### 필수 조건
-*   Python 3.10+
-*   [Anki](https://apps.ankiweb.net/) 및 [AnkiConnect](https://ankiweb.net/shared/info/2055405234) 플러그인 설치.
+Anki를 켠 상태에서 `http://localhost:8001`을 엽니다. 프론트엔드 개발 시에는 `cd frontend && npm run dev`(포트 5173, `/api`는 8001로 프록시).
 
-#### 설치 및 실행
-1.  저장소 클론 및 이동:
-    ```bash
-    git clone https://github.com/lee04jinwoo-sys/Anki-Manager.git
-    cd "Anki Manager"
-    ```
-2.  가상 환경 설정 및 패키지 설치:
-    ```bash
-    python -m venv .venv
-    source .venv/bin/activate
-    pip install -r requirements.txt
-    ```
-3.  `.env` 파일에 필요한 API 키를 설정합니다.
-4.  메인 메뉴 실행:
-    ```bash
-    python main.py
-    ```
+## 테스트
 
----
+```bash
+.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/python -m pytest
+```
 
-## English
+`tests/unit`은 AnkiConnect를 모킹하며, 모킹하지 않은 Anki 호출은 실패하도록 막혀 있습니다.
+실제 Anki에 붙는 읽기 전용 점검은 `scripts/check_pos_logic.py`, `scripts/check_idiom_detection.py`입니다 (`.venv/bin/python -m scripts.check_pos_logic`).
 
-A powerful, modular CLI tool to automate your Anki workflow. Seamlessly fetch content, enrich notes with AI, manage card designs, and track your learning progress.
+## 구조
 
-### ✨ Key Features
-
-#### 1. Add Notes (Smart Automation)
-*   **YouTube**: Fetch transcripts and automatically select key sentences and vocabulary.
-*   **Situation**: Generate contextual learning material based on a simple description.
-*   **Obsidian**: Sync your "Inbox" notes directly into Anki.
-*   **AI Enrichment**: Automatically fills definitions, examples, and translations.
-
-#### 2. Organize Notes (Maintenance)
-*   **Audio Filler**: Automatically add high-quality TTS audio to your cards.
-*   **Field Completion**: Auto-fill missing fields across all note models.
-*   **Auto-Organizer**: Smart card migration and deck organization.
-*   **Duplicate Cleaner**: Keep your collection lean by removing redundant cards.
-
-#### 3. Design Management
-*   **Import/Export**: Manage your Anki card templates and CSS as JSON files.
-*   **Version Control**: Keep your card designs safe and easily synchronizable across profiles.
-
-#### 4. Statistics & Analytics
-*   **Performance Tracking**: Quick overview of deck retention and new card progress.
-*   **Visual Reports**: Clean, table-based statistics directly in your terminal.
-
-### ⌨️ Advanced Interactive Selector
-The CLI features a modern, color-coded interactive selector:
-*   **Visual Feedback**: [green]ON[/] / [red]OFF[/] backgrounds for selection.
-*   **Bulk Actions**: `A` (Select All), `N` (Deselect None).
-*   **Language Support**: Shortcuts work in both English and Korean (`ㅁ`, `ㅜ`, `ㅊ`, `ㅂ`).
-
-### 🚀 Getting Started
-
-#### Prerequisites
-*   Python 3.10+
-*   [Anki](https://apps.ankiweb.net/) with [AnkiConnect](https://ankiweb.net/shared/info/2055405234) installed.
-
-#### Installation & Usage
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/lee04jinwoo-sys/Anki-Manager.git
-   cd "Anki Manager"
-   ```
-2. Set up virtual environment & Install dependencies:
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate
-   pip install -r requirements.txt
-   ```
-3. Configure your `.env` file with necessary API keys.
-4. Run the interactive menu:
-   ```bash
-   python main.py
-   ```
+```
+server.py, main.py        FastAPI 앱 / 실행 진입점
+backend/routers           HTTP 엔드포인트 (/api/...)
+backend/services          카드 등록, 노트 정리, Obsidian 가져오기, 코퍼스, 작업 관리(JobManager)
+core/                     Gemini 보강(completer), 링크 역색인(link_manager), 예문 일괄 생성
+integrations/             AnkiConnect, TTS, Obsidian
+utils/                    덱 이동, 중복 정리, 품사, 디자인 백업, 통계
+scripts/                  일회성 마이그레이션·점검 스크립트
+frontend/                 React 19 + Vite + Tailwind
+```
