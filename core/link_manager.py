@@ -556,18 +556,26 @@ class LinkManager:
             return [dict(row) for row in cursor.fetchall()]
 
     @classmethod
-    def get_linked_vocab_for_sentence(cls, sentence_text: str) -> List[str]:
+    def get_linked_vocab_for_sentence(cls, sentence_text: str) -> List[Dict[str, Any]]:
         init_db()
         cleaned = clean_text(sentence_text).strip()
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT DISTINCT vocab_word
-                FROM links
-                WHERE lower(sentence_text) = lower(?)
+                SELECT DISTINCT l.vocab_word, v.meaning, v.pos
+                FROM links l
+                LEFT JOIN vocab_cache v ON l.vocab_note_id = v.note_id
+                WHERE lower(l.sentence_text) = lower(?)
             """, (cleaned,))
             rows = cursor.fetchall()
-            return [row["vocab_word"] for row in rows]
+            return [
+                {
+                    "word": row["vocab_word"],
+                    "meaning": row["meaning"] or "",
+                    "pos": row["pos"] or ""
+                }
+                for row in rows
+            ]
 
     @classmethod
     def get_random_unlinked_vocab(cls, count: int = 20) -> List[Dict[str, Any]]:
@@ -653,6 +661,39 @@ class LinkManager:
                 for v_id in vocab_ids_to_increment:
                     cursor.execute("UPDATE vocab_cache SET link_count = link_count + 1 WHERE note_id = ?", (v_id,))
                 conn.commit()
+
+                # 단어 카드의 '예문' 필드에 최대 5개 한도로 자동 덧붙임 (토큰 0개)
+                for v_id in vocab_ids_to_increment:
+                    try:
+                        cls._append_sentence_to_vocab_note(v_id, cleaned_sentence)
+                    except Exception as e:
+                        pass
+
+    @classmethod
+    def _append_sentence_to_vocab_note(cls, vocab_note_id: int, new_sentence: str):
+        """단어 카드의 '예문' 필드에 새 문장을 최대 5개 한도 내에서 |||로 자동 덧붙임 (로컬 연산, 토큰 0개)"""
+        clean_new = clean_text(new_sentence).strip()
+        if not clean_new:
+            return
+
+        notes_info = AnkiConnector.get_notes_info([vocab_note_id])
+        if not notes_info or not notes_info[0]:
+            return
+
+        fields = notes_info[0].get("fields", {})
+        curr_ex = fields.get("예문", {}).get("value", "").strip()
+
+        parts = [p.strip() for p in curr_ex.split("|||") if p.strip()]
+        if len(parts) >= 5:
+            return
+
+        for existing in parts:
+            if clean_text(existing).lower() == clean_new.lower():
+                return
+
+        parts.append(clean_new)
+        new_val = " ||| ".join(parts)
+        AnkiConnector.update_note_fields(vocab_note_id, {"예문": new_val})
 
     @classmethod
     def index_single_vocab(cls, vocab_note_id: int, vocab_word: str, meaning: str = "", pos: str = ""):

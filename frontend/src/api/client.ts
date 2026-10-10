@@ -111,4 +111,20 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ words, generate_audio: generateAudio }),
     }),
+
+  // Corpus & Chunk Promotion
+  getCorpusAuditStats: (): Promise<import('../types/corpus').CorpusAuditStats> =>
+    request<import('../types/corpus').CorpusAuditStats>('/corpus/audit-stats'),
+  getCollocations: (word: string): Promise<import('../types/corpus').CollocationResponse> =>
+    request<import('../types/corpus').CollocationResponse>(
+      `/corpus/collocations?word=${encodeURIComponent(word)}`,
+    ),
+  promoteChunk: (
+    req: import('../types/corpus').PromoteChunkRequest,
+  ): Promise<import('../types/corpus').PromoteChunkResponse> =>
+    request<import('../types/corpus').PromoteChunkResponse>('/corpus/promote-chunk', {
+      method: 'POST',
+      body: JSON.stringify(req),
+    }),
 }
+

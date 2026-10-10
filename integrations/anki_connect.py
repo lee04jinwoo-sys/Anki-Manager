@@ -49,6 +49,30 @@ class AnkiConnector:
         return cls.invoke('updateNoteFields', note={'id': note_id, 'fields': fields})
 
     @classmethod
+    def update_notes_fields_batch(cls, updates, chunk_size=100):
+        """
+        AnkiConnect 'multi' 액션을 사용하여 여러 개의 updateNoteFields를 
+        1번의 HTTP POST 페이로드로 묶어 초고속 일괄 처리.
+        updates 형식: [{'id': note_id, 'fields': {'예문': ...}}, ...]
+        """
+        if not updates:
+            return []
+        all_results = []
+        for i in range(0, len(updates), chunk_size):
+            chunk = updates[i:i + chunk_size]
+            actions = [
+                {
+                    "action": "updateNoteFields",
+                    "params": {"note": {"id": item["id"], "fields": item["fields"]}}
+                }
+                for item in chunk
+            ]
+            res = cls.invoke("multi", actions=actions)
+            if res:
+                all_results.extend(res)
+        return all_results
+
+    @classmethod
     def get_deck_names(cls):
         return cls.invoke('deckNames')
 

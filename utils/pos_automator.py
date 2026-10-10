@@ -22,18 +22,26 @@ def setup_nltk():
         nltk.download('punkt_tab')
         nltk.download('averaged_perceptron_tagger_eng')
 
-def get_simple_pos(word):
+def get_simple_pos(word: str) -> str:
     """
     NLTK 품사를 사용자 친화적인 n, v, adj, adv, idiom, prep, conj로 변환
     단일 단어의 경우 WordNet을 사용해 가능한 모든 품사를 추출 (예: 'n, v')
+    청크/연어의 경우 실전 기능 품사 체계('v', 'n', 'adj', 'adv', 'prep', 'idiom')로 정밀 분류
     """
-    tokens = nltk.word_tokenize(word)
+    import html
+    import re
+
+    cleaned = html.unescape(word or "")
+    cleaned = re.sub(r'<[^>]+>', ' ', cleaned)
+    cleaned = re.sub(r'&[a-zA-Z]+;', ' ', cleaned).strip()
+
+    tokens = nltk.word_tokenize(cleaned)
     if not tokens:
         return ""
         
     # 1. 단일 단어 처리 (WordNet 사용)
     if len(tokens) == 1:
-        synsets = wordnet.synsets(word)
+        synsets = wordnet.synsets(cleaned)
         if not synsets:
             # WordNet에 없으면 기본 태거 사용
             tag = nltk.pos_tag(tokens)[0][1]
@@ -62,20 +70,95 @@ def get_simple_pos(word):
         sorted_pos = sorted(list(pos_set), key=lambda x: priority.get(x, 9))
         return ", ".join(sorted_pos)
 
-    # 2. 여러 단어 처리 (기존 규칙 유지)
-    tags = nltk.pos_tag(tokens)
-    tag_list = [t[1] for t in tags]
-    
-    # 규칙 1: 모든 단어가 명사(NN) 또는 형용사(JJ)이고, 마지막이 명사(NN)로 끝나는 경우 -> n
-    if all(t.startswith('NN') or t.startswith('JJ') for t in tag_list):
-        if tag_list[-1].startswith('NN'):
+    # 2. 여러 단어 처리 (실전 기능 품사 체계: v, n, adj, adv, prep, idiom)
+    raw_tokens = [t for t in tokens if t.isalnum()]
+    if not raw_tokens:
+        return "idiom"
+
+    first_raw = raw_tokens[0].lower()
+    last_raw = raw_tokens[-1].lower()
+
+    PREP_HEADS = {
+        'in', 'on', 'at', 'by', 'for', 'with', 'without', 'under', 'beyond', 'over', 'from',
+        'as', 'out', 'to', 'except', 'apart', 'aside', 'instead', 'because', 'due', 'owing',
+        'prior', 'thanks', 'regardless', 'inasmuch', 'up'
+    }
+    CLOSING_PREPS = {'of', 'to', 'for', 'with', 'in', 'on', 'about', 'from', 'as', 'into'}
+
+    NON_PARTICIPLE_ING = {'bring', 'sing', 'ring', 'spring', 'cling', 'fling', 'sling', 'string', 'swing', 'wring', 'king', 'wing', 'thing'}
+    NON_PARTICIPLE_ED = {'bed', 'feed', 'bleed', 'breed', 'speed', 'seed', 'weed', 'need', 'shed', 'red'}
+
+    def is_participle(tok: str) -> bool:
+        t = tok.lower()
+        if t.endswith('ing') and len(t) > 4 and t not in NON_PARTICIPLE_ING:
+            return True
+        if t.endswith('ed') and len(t) > 4 and t not in NON_PARTICIPLE_ED:
+            return True
+        return False
+
+    # 규칙 1: 관사 (a, an, the)
+    if first_raw in ['a', 'an', 'the']:
+        is_placeholder_a = (len(raw_tokens) >= 2 and raw_tokens[1].lower() in ['be', 'have', 'do', 'is', 'are', 'prior'])
+        if not is_placeholder_a:
+            if last_raw in CLOSING_PREPS:
+                return 'prep'
             return 'n'
-            
-    # 규칙 2: 전치사(IN/TO)로 시작해서 전치사(IN/TO)로 끝나는 경우 -> prep
-    if tag_list[0] in ['IN', 'TO'] and tag_list[-1] in ['IN', 'TO']:
-        return 'prep'
-        
-    # 그 외의 모든 조합 -> idiom
+
+    # 플레이스홀더 필터링 (A be attributed to B -> be attributed to B)
+    placeholders = {'a', 'b', 'c', 'sb', 'sth', 'someone', 'something', 'x', 'y', 'one'}
+    content_tokens = [t for t in raw_tokens if t.lower() not in placeholders and not t.lower().endswith("'s")]
+    if not content_tokens:
+        content_tokens = raw_tokens
+
+    first = content_tokens[0].lower()
+    last = content_tokens[-1].lower()
+
+    # 규칙 2: 복합 전치사구 및 부사구
+    if first in PREP_HEADS:
+        if last in CLOSING_PREPS:
+            return 'prep'
+        return 'adv'
+
+    # 규칙 3: Be + 형용사/구문 -> v
+    if first == 'be':
+        return 'v'
+
+    # 규칙 4: 순수 형용사 + 전치사 결합 청크 (adept at, fastidious about, lenient with, terrified of) -> adj
+    if len(content_tokens) >= 2:
+        second = content_tokens[1].lower()
+        if second in CLOSING_PREPS or second in ['at', 'about']:
+            v_syn = wordnet.synsets(first, pos=wordnet.VERB)
+            adj_syn = wordnet.synsets(first, pos=wordnet.ADJ)
+            if adj_syn and (not v_syn or is_participle(first)):
+                return 'adj'
+
+    # 규칙 5: 첫 단어가 동사인 실전 동사구 (beg for mercy, live in exile, bring about A, cope with)
+    blacklist_verbs = {
+        'state', 'point', 'power', 'room', 'question', 'statue', 'adverse',
+        'unquestionably', 'sensational', 'conscientious', 'capricious', 'esoteric',
+        'steadfast', 'frivolous', 'compelling', 'plenty', 'lack', 'kind', 'sort'
+    }
+    v_synsets = wordnet.synsets(first, pos=wordnet.VERB)
+    if v_synsets and first not in blacklist_verbs and not is_participle(first):
+        return 'v'
+
+    # 규칙 6: Noun + of/for/in + A (statue of A, lack of A)
+    if len(content_tokens) >= 2 and content_tokens[1].lower() in ['of', 'for', 'in', 'to'] and wordnet.synsets(first, pos=wordnet.NOUN):
+        if last in CLOSING_PREPS:
+            return 'prep'
+        return 'n'
+
+    # 규칙 7: 태거 기반 말미 어휘 판별
+    tags = nltk.pos_tag(content_tokens)
+    tag_list = [t[1] for t in tags]
+
+    if tag_list[-1].startswith('JJ') or (len(content_tokens) >= 2 and tag_list[0].startswith('RB') and wordnet.synsets(last, pos=wordnet.ADJ)):
+        return 'adj'
+
+    if wordnet.synsets(last, pos=wordnet.NOUN) or tag_list[-1].startswith('NN'):
+        return 'n'
+
+    # 그 외 비유적 관용구 -> idiom
     return "idiom"
 
 def run_pos_automation() -> int:

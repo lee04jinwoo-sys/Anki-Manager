@@ -127,109 +127,36 @@ def apply_card_templates():
 
         AnkiConnector.invoke("updateModelTemplates", model={"name": MODEL_VOCAB, "templates": updated_vocab_templates})
 
-        # 3. English Sentence 템플릿 주입
+        # 3. English Sentence 템플릿 주입 (인라인 밑줄 & 어휘 강조)
+        from scripts.update_sentence_highlight import SENTENCE_BACK_TEMPLATE
         sentence_templates = AnkiConnector.invoke("modelTemplates", modelName=MODEL_SENTENCE)
-        sentence_badge_html = """
-<!-- ANKI_LINK_MANAGER_SENTENCE -->
-<div class="synonyms-box" id="alm-sentence-box" style="display:none; margin: 10px auto 14px;"></div>
-<script>
-(function() {
-  var raw = "{{문장}}";
-  var s = raw.replace(/<[^>]+>/g, '').trim();
-  if (!s) return;
-  fetch("http://127.0.0.1:8001/api/links/badge/sentence?text=" + encodeURIComponent(s))
-    .then(function(r) { return r.json(); })
-    .then(function(d) {
-      if (d && d.words && d.words.length > 0) {
-        var box = document.getElementById("alm-sentence-box");
-        if (box) {
-          box.innerHTML = d.words.map(function(w) {
-            return '<span class="synonym-tag">' + w + '</span>';
-          }).join("");
-          box.style.display = "flex";
-        }
-      }
-    })
-    .catch(function() {});
-})();
-</script>
-<style>
-.card #alm-sentence-box,
-#alm-sentence-box {
-  display: flex !important;
-  flex-wrap: wrap !important;
-  justify-content: center !important;
-  gap: 6px !important;
-  margin: 10px auto 14px !important;
-}
-.card #alm-sentence-box .synonym-tag,
-#alm-sentence-box .synonym-tag {
-  font-family: '나눔고딕', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
-  font-size: 15px !important;
-  font-weight: 600 !important;
-  padding: 4px 12px !important;
-  border-radius: 999px !important;
-  background: #f3f4f6 !important;
-  color: #374151 !important;
-  border: 1px solid #d1d5db !important;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
-  display: inline-block !important;
-  line-height: 1.5 !important;
-}
-.card.nightMode #alm-sentence-box .synonym-tag,
-.nightMode #alm-sentence-box .synonym-tag {
-  background: #374151 !important;
-  color: #d1d5db !important;
-  border-color: #4b5563 !important;
-}
-</style>
-<!-- /ANKI_LINK_MANAGER_SENTENCE -->
-"""
         updated_sentence_templates = {}
         for cname, cdata in sentence_templates.items():
-            back = cdata["Back"]
-            # 기존 주입 태그 제거
-            back = re.sub(r"<!-- ANKI_LINK_MANAGER_SENTENCE -->.*?<!-- /ANKI_LINK_MANAGER_SENTENCE -->\n?", "", back, flags=re.DOTALL)
-            # {{문장}} 태그 바로 뒤(문장 바로 밑)에 삽입
-            if "{{문장}}" in back:
-                pattern = r"({{문장}}.*?</div>)"
-                if re.search(pattern, back, flags=re.DOTALL):
-                    back = re.sub(pattern, r"\1\n" + sentence_badge_html.strip(), back, count=1, flags=re.DOTALL)
-                else:
-                    back = back + "\n" + sentence_badge_html.strip()
-            else:
-                back = back + "\n" + sentence_badge_html.strip()
-
             updated_sentence_templates[cname] = {
                 "Front": cdata["Front"],
-                "Back": back
+                "Back": SENTENCE_BACK_TEMPLATE if cname == "Card 1" else cdata["Back"]
             }
-
         AnkiConnector.invoke("updateModelTemplates", model={"name": MODEL_SENTENCE, "templates": updated_sentence_templates})
 
-        # 4. English Grammar 템플릿 주입 (Card 3 Sentence 카드 포함)
+        # 4. English Grammar 템플릿 주입 (Card 1 알약 제거, Card 3 인라인 강조)
         try:
             grammar_templates = AnkiConnector.invoke("modelTemplates", modelName=MODEL_GRAMMAR)
             updated_grammar_templates = {}
             for cname, cdata in grammar_templates.items():
                 back = cdata["Back"]
+                # 기존 알약 뱃지 태그 완전 제거
                 back = re.sub(r"<!-- ANKI_LINK_MANAGER_SENTENCE -->.*?<!-- /ANKI_LINK_MANAGER_SENTENCE -->\n?", "", back, flags=re.DOTALL)
-                if "{{문장}}" in back:
-                    pattern = r"({{문장}}.*?</div>)"
-                    if re.search(pattern, back, flags=re.DOTALL):
-                        back = re.sub(pattern, r"\1\n" + sentence_badge_html.strip(), back, count=1, flags=re.DOTALL)
-                    else:
-                        back = back + "\n" + sentence_badge_html.strip()
-                else:
-                    back = back + "\n" + sentence_badge_html.strip()
+                if cname == "Card 3":
+                    back = SENTENCE_BACK_TEMPLATE
 
                 updated_grammar_templates[cname] = {
                     "Front": cdata["Front"],
-                    "Back": back
+                    "Back": back.strip()
                 }
             AnkiConnector.invoke("updateModelTemplates", model={"name": MODEL_GRAMMAR, "templates": updated_grammar_templates})
         except Exception as ge:
             logger.warning(f"English Grammar 템플릿 주입 건너뜀: {ge}")
+
 
         return {
             "success": True,
@@ -254,10 +181,11 @@ def get_vocab_badge(word: str = Query(..., description="조회할 단어")):
 
 @router.get("/badge/sentence")
 def get_sentence_badge(text: str = Query(..., description="조회할 문장 텍스트")):
-    """Sentence 카드 뒷면 비동기 호출용: 포함된 어휘 목록 반환"""
+    """Sentence 카드 뒷면 비동기 호출용: 포함된 어휘 목록 및 뜻 반환"""
     try:
-        words = LinkManager.get_linked_vocab_for_sentence(text)
-        return {"sentence": text, "words": words}
+        items = LinkManager.get_linked_vocab_for_sentence(text)
+        words = [item["word"] for item in items]
+        return {"sentence": text, "words": words, "items": items}
     except Exception as e:
         logger.error(f"Sentence 뱃지 조회 실패: {e}")
-        return {"sentence": text, "words": []}
+        return {"sentence": text, "words": [], "items": []}

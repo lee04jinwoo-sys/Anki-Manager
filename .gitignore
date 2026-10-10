@@ -28,3 +28,8 @@ data/template_backups/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local data and backups
+data/backups/
+data/*.db
+scripts/__pycache__/

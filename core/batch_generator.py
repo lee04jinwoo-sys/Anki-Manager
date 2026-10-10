@@ -12,7 +12,7 @@ from config import (
 )
 from integrations.anki_connect import AnkiConnector
 from integrations.audio import AnkiTTSFiller
-from core.link_manager import get_db_connection, clean_text, PatternMatcher
+from core.link_manager import get_db_connection, clean_text, PatternMatcher, LinkManager
 
 logger = logging.getLogger("BatchSentenceGenerator")
 
@@ -129,19 +129,11 @@ class BatchSentenceGenerator:
             if not clean_sentence:
                 continue
 
-            # TTS 오디오 생성
-            sound_field = ""
-            if generate_audio:
-                try:
-                    sound_field, _ = AnkiTTSFiller.generate_random_tts(tts_client, clean_sentence)
-                except Exception as e:
-                    logger.error(f"TTS 생성 실패 ({clean_sentence}): {e}")
-
-            # Anki 노트 필드 구성
+            # Anki 노트 필드 구성 (텍스트 즉시 생성)
             fields = {
                 "문장": clean_sentence,
                 "해설": clean_translation,
-                "소리": sound_field
+                "소리": ""
             }
 
             try:
@@ -152,11 +144,21 @@ class BatchSentenceGenerator:
                 )
                 logger.info(f"Anki 문장 카드 생성 완료: {clean_sentence} (ID: {new_note_id})")
 
+                # 백그라운드 오디오 비동기 큐 등록 (대기 시간 0초)
+                if generate_audio and new_note_id:
+                    from backend.services.card_service import queue_background_audio
+                    queue_background_audio(new_note_id, clean_sentence, is_sentence=True)
+
                 if matched_vocab:
                     v_id = matched_vocab["note_id"]
                     v_word = matched_vocab["word"]
                     links_to_insert.append((v_id, v_word, new_note_id, clean_sentence))
                     vocab_ids_updated.add(v_id)
+                    # 단어 카드의 예문 풀에 자동 연동 (최대 5개 캡, 토큰 0개)
+                    try:
+                        LinkManager._append_sentence_to_vocab_note(v_id, clean_sentence)
+                    except Exception as append_err:
+                        logger.warning(f"단어 예문 자동 추가 실패 ({v_word}): {append_err}")
 
                 created_results.append({
                     "word": w_str,

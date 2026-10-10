@@ -68,8 +68,9 @@ class NoteCompleter:
         try:
             response = self.client.models.generate_content(
                 model=self.model_id,
-                contents=[self.sys_instruct, prompt],
+                contents=prompt,
                 config=types.GenerateContentConfig(
+                    system_instruction=self.sys_instruct,
                     response_mime_type="application/json",
                     temperature=GEMINI_DEFAULT_TEMPERATURE
                 )
@@ -184,31 +185,21 @@ class NoteCompleter:
                 f"대상 단어: {main_field_value}\n"
                 f"기존 데이터: {current_fields}\n"
                 f"누락된 필드: {missing_fields}\n\n"
-                f"시스템 지침에 정의된 [단어 필드 작성 규칙]을 엄격히 준수하여 누락된 필드를 채우세요.\n"
-                f"특히 '설명' 필드는 반드시 ①의미 뉘앙스 정의, ②콜로케이션 마무리라는 2단계 공식을 따라야 합니다.\n"
-                f"기존 데이터와 일관성을 유지하며 JSON 형식으로 누락된 필드만 반환하세요."
+                f"지침 규칙에 따라 누락된 필드만 채워 JSON으로 반환하세요."
             )
         elif "Sentence" in model_name:
             prompt = (
                 f"모델: {model_name}\n"
                 f"대상 문장: {main_field_value}\n"
                 f"누락된 필드: {missing_fields}\n\n"
-                f"[문장 필드 작성 규칙]에 따라 누락된 필드(해설 등)를 자연스럽게 채워 JSON으로 반환하세요.\n"
-                f"특히 '해설' 필드에는 문장 자체의 의미를 설명하는 투(예: ~라는 뜻입니다)를 지양하고, 자연스러운 한국어 번역 결과만 직접적으로 작성하세요.\n"
-                f"또한 문장에 'A, B, V' 등의 플레이스홀더가 있다면 반드시 실제 단어로 대체하여 자연스러운 문장으로 완성하세요."
+                f"지침 규칙에 따라 누락된 필드(해설 등)를 채워 JSON으로 반환하세요."
             )
         elif "Grammar" in model_name:
             prompt = (
                 f"모델: {model_name}\n"
                 f"문장 및 정답 데이터: {current_fields}\n"
                 f"누락된 필드: {missing_fields}\n\n"
-                f"지시사항:\n"
-                f"1. 제공된 문법 문제 데이터를 바탕으로 누락된 필드를 채워 반환하세요.\n"
-                f"2. 만약 '해설'이 누락되었다면 문장 전체에 대한 자연스러운 한국어 번역만 작성하세요.\n"
-                f"3. 만약 '설명'이 누락되었다면 정답이 왜 정답인지 논리적이고 친절한 해설을 작성하세요.\n"
-                f"4. 만약 '보기1', '보기2', '보기3' 중 비어있는 항목이 있다면, 문맥상 오답이면서 영어 학습자를 헷갈리게 할 만한 매력적인 오답을 생성하세요.\n"
-                f"5. [중요] 모든 선택지('정답', '보기1', '보기2', '보기3')는 형태나 스펠링이 서로 완전히 달라야 하며, 어떠한 중복도 허용하지 않습니다.\n"
-                f"반드시 JSON 형식으로 반환하세요."
+                f"지시: 해설(자연스러운 한국어 번역), 설명(정답 논리적 이유), 보기1~3(중복 없는 매력적인 오답)을 생성하여 JSON으로 반환하세요."
             )
         else:
             prompt = (
@@ -216,7 +207,7 @@ class NoteCompleter:
                 f"메인 데이터: {main_field_value}\n"
                 f"기존 필드: {current_fields}\n"
                 f"누락 필드: {missing_fields}\n\n"
-                f"위 정보를 바탕으로 누락된 필드를 생성하여 JSON으로 반환하세요."
+                f"누락된 필드를 생성하여 JSON으로 반환하세요."
             )
         return self._generate(prompt)
 

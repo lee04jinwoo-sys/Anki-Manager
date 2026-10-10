@@ -11,7 +11,8 @@ from typing import List, Dict, Any, Optional
 
 import gtts
 from config import (
-    ANKI_URL, DECK_SENTENCE, MODEL_SENTENCE, DECK_VOCAB, MODEL_VOCAB
+    ANKI_URL, DECK_SENTENCE, MODEL_SENTENCE, DECK_VOCAB, MODEL_VOCAB,
+    AUDIO_ADDER_MAX_WORKERS
 )
 from integrations.anki_connect import AnkiConnector
 from integrations.audio import AnkiTTSFiller
@@ -24,6 +25,27 @@ from backend.schemas.cards import (
 )
 
 logger = logging.getLogger("CardService")
+
+_audio_executor = concurrent.futures.ThreadPoolExecutor(
+    max_workers=AUDIO_ADDER_MAX_WORKERS,
+    thread_name_prefix="anki_audio"
+)
+
+def queue_background_audio(note_id: int, text: str, is_sentence: bool = True) -> None:
+    """백그라운드에서 TTS 오디오를 비동기로 생성하여 카드의 '소리' 필드에 안전하게 연결"""
+    def _worker():
+        try:
+            if is_sentence:
+                sound_tag = generate_sentence_audio(text)
+            else:
+                sound_tag, _ = AnkiTTSFiller.generate_gtts(text)
+            if sound_tag:
+                AnkiConnector.update_note_fields(note_id, {"소리": sound_tag})
+                logger.info(f"Background audio attached to note {note_id}: {sound_tag}")
+        except Exception as e:
+            logger.warning(f"Background audio generation failed for note {note_id}: {e}")
+
+    _audio_executor.submit(_worker)
 
 _tts_client = None
 try:
@@ -105,15 +127,10 @@ def create_sentence_card(req: SentenceCreateRequest) -> CardResponse:
         except Exception as e:
             logger.warning(f"AI translation enrichment failed: {e}")
 
-    # 2. Generate Audio
-    sound_tag = ""
-    if req.generate_audio:
-        sound_tag = generate_sentence_audio(text)
-
     fields = {
         "문장": text,
         "해설": translation,
-        "소리": sound_tag
+        "소리": ""
     }
 
     try:
@@ -123,6 +140,11 @@ def create_sentence_card(req: SentenceCreateRequest) -> CardResponse:
             fields=fields,
             options={"allowDuplicate": False}
         )
+
+        # 백그라운드 비동기 오디오 큐 등록 (사용자 대기 시간 0초)
+        if req.generate_audio and note_id:
+            queue_background_audio(note_id, text, is_sentence=True)
+
         # Real-time incremental link indexing
         try:
             LinkManager.index_single_sentence(note_id, text)
@@ -132,7 +154,7 @@ def create_sentence_card(req: SentenceCreateRequest) -> CardResponse:
         return CardResponse(
             success=True,
             note_id=note_id,
-            data={"sentence": text, "translation": translation, "sound": sound_tag}
+            data={"sentence": text, "translation": translation, "sound": "queued"}
         )
     except Exception as e:
         err_msg = str(e)
@@ -172,43 +194,41 @@ def create_bulk_sentences(req: SentenceBulkCreateRequest) -> BulkCardResponse:
         except Exception as e:
             logger.warning(f"Bulk AI translation enrichment warning: {e}")
 
-    # 2. Process in chunks of 20 to prevent HTTP timeouts and allow progress
-    CHUNK_SIZE = 20
+    # 2. Process in chunks of 50 (Instant addNotes without audio blocking)
+    CHUNK_SIZE = 50
     chunks = [items_to_process[i:i + CHUNK_SIZE] for i in range(0, len(items_to_process), CHUNK_SIZE)]
     total_success_count = 0
 
-    def build_note(item):
-        s = item["sentence"]
-        t = item["translation"]
-        if not s:
-            return None
-        sound_tag = generate_sentence_audio(s) if req.generate_audio else ""
-        return {
-            "deckName": DECK_SENTENCE,
-            "modelName": MODEL_SENTENCE,
-            "fields": {
-                "문장": s,
-                "해설": t,
-                "소리": sound_tag
-            },
-            "options": {"allowDuplicate": False},
-            "_raw_sentence": s
-        }
-
     for chunk in chunks:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
-            chunk_payload = list(filter(None, executor.map(build_note, chunk)))
+        chunk_payload = []
+        raw_sentences = []
+        for item in chunk:
+            s = item["sentence"]
+            t = item["translation"]
+            if s:
+                chunk_payload.append({
+                    "deckName": DECK_SENTENCE,
+                    "modelName": MODEL_SENTENCE,
+                    "fields": {
+                        "문장": s,
+                        "해설": t,
+                        "소리": ""
+                    },
+                    "options": {"allowDuplicate": False}
+                })
+                raw_sentences.append(s)
 
         if not chunk_payload:
             continue
-
-        raw_sentences = [n.pop("_raw_sentence") for n in chunk_payload]
 
         try:
             results = AnkiConnector.invoke("addNotes", notes=chunk_payload)
             for nid, s_text in zip(results or [], raw_sentences):
                 if nid:
                     total_success_count += 1
+                    # 백그라운드 오디오 큐 등록
+                    if req.generate_audio:
+                        queue_background_audio(nid, s_text, is_sentence=True)
                     try:
                         LinkManager.index_single_sentence(nid, s_text)
                     except Exception:
@@ -247,14 +267,6 @@ def create_vocab_card(req: VocabCreateRequest) -> CardResponse:
         except Exception as e:
             logger.warning(f"AI vocab enrichment failed: {e}")
 
-    # 2. Audio generation (STRICT RULE: English Vocabulary MUST use gTTS)
-    sound_tag = ""
-    if req.generate_audio:
-        try:
-            sound_tag, _ = AnkiTTSFiller.generate_gtts(norm_word)
-        except Exception as e:
-            logger.warning(f"Vocab gTTS generation warning: {e}")
-
     fields = {
         "단어": norm_word,
         "뜻": meaning,
@@ -262,7 +274,7 @@ def create_vocab_card(req: VocabCreateRequest) -> CardResponse:
         "유의어": "",  # STRICT ZERO-SYNONYM RULE!
         "예문": example,
         "설명": explanation,
-        "소리": sound_tag
+        "소리": ""
     }
 
     try:
@@ -272,6 +284,11 @@ def create_vocab_card(req: VocabCreateRequest) -> CardResponse:
             fields=fields,
             options={"allowDuplicate": False}
         )
+
+        # 백그라운드 비동기 오디오 큐 등록
+        if req.generate_audio and note_id:
+            queue_background_audio(note_id, norm_word, is_sentence=False)
+
         # Real-time incremental link indexing
         try:
             LinkManager.index_single_vocab(note_id, norm_word, meaning, pos)
@@ -300,58 +317,51 @@ def create_bulk_vocabs(req: VocabBulkCreateRequest) -> BulkCardResponse:
     if not req.items:
         return BulkCardResponse(success=True, count=0, total=0)
 
-    def process_item(item):
-        raw_word = item.word.strip()
-        norm_word = normalize_vocab_placeholders(raw_word)
-        if not norm_word:
-            return None
-
-        meaning = item.meaning.strip() if item.meaning else ""
-        pos = item.pos.strip() if item.pos else ""
-        example = clean_vocab_example(item.example.strip() if item.example else "")
-        explanation = item.explanation.strip() if item.explanation else ""
-
-        sound_tag = ""
-        if req.generate_audio:
-            try:
-                sound_tag, _ = AnkiTTSFiller.generate_gtts(norm_word)
-            except Exception as e:
-                logger.warning(f"Bulk vocab gTTS warning for '{norm_word}': {e}")
-
-        return {
-            "deckName": DECK_VOCAB,
-            "modelName": MODEL_VOCAB,
-            "fields": {
-                "단어": norm_word,
-                "뜻": meaning,
-                "품사": pos,
-                "유의어": "",  # STRICT ZERO-SYNONYM RULE!
-                "예문": example,
-                "설명": explanation,
-                "소리": sound_tag
-            },
-            "options": {"allowDuplicate": False},
-            "_raw_data": (norm_word, meaning, pos)
-        }
-
-    CHUNK_SIZE = 20
+    CHUNK_SIZE = 50
     chunks = [req.items[i:i + CHUNK_SIZE] for i in range(0, len(req.items), CHUNK_SIZE)]
     total_success_count = 0
 
     for chunk in chunks:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
-            chunk_payload = list(filter(None, executor.map(process_item, chunk)))
+        chunk_payload = []
+        raw_items = []
+        for item in chunk:
+            raw_word = item.word.strip()
+            norm_word = normalize_vocab_placeholders(raw_word)
+            if not norm_word:
+                continue
+
+            meaning = item.meaning.strip() if item.meaning else ""
+            pos = item.pos.strip() if item.pos else ""
+            example = clean_vocab_example(item.example.strip() if item.example else "")
+            explanation = item.explanation.strip() if item.explanation else ""
+
+            chunk_payload.append({
+                "deckName": DECK_VOCAB,
+                "modelName": MODEL_VOCAB,
+                "fields": {
+                    "단어": norm_word,
+                    "뜻": meaning,
+                    "품사": pos,
+                    "유의어": "",
+                    "예문": example,
+                    "설명": explanation,
+                    "소리": ""
+                },
+                "options": {"allowDuplicate": False}
+            })
+            raw_items.append((norm_word, meaning, pos))
 
         if not chunk_payload:
             continue
-
-        raw_items = [n.pop("_raw_data") for n in chunk_payload]
 
         try:
             results = AnkiConnector.invoke("addNotes", notes=chunk_payload)
             for nid, (w, m, p) in zip(results or [], raw_items):
                 if nid:
                     total_success_count += 1
+                    # 백그라운드 오디오 큐 등록
+                    if req.generate_audio:
+                        queue_background_audio(nid, w, is_sentence=False)
                     try:
                         LinkManager.index_single_vocab(nid, w, m, p)
                     except Exception:
