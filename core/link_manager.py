@@ -448,10 +448,18 @@ class LinkManager:
                 if search:
                     anki_q += f' "{search}"'
                 card_ids = AnkiConnector.invoke("findCards", query=anki_q) or []
-                total_items = len(card_ids)
+                all_cards = AnkiConnector.invoke("cardsInfo", cards=card_ids) if card_ids else []
 
-                page_ids = card_ids[offset:offset + limit]
-                cards_info = AnkiConnector.invoke("cardsInfo", cards=page_ids) or []
+                # 노트 단위로 묶는다 (단어 노트는 카드가 2장): 가장 나쁜 카드 기준
+                worst_by_note: Dict[int, Dict[str, Any]] = {}
+                for c in all_cards or []:
+                    nid = c["note"]
+                    prev = worst_by_note.get(nid)
+                    if prev is None or (c.get("lapses", 0), -c.get("factor", 0)) > (prev.get("lapses", 0), -prev.get("factor", 0)):
+                        worst_by_note[nid] = c
+                ranked = sorted(worst_by_note.values(), key=lambda c: (-c.get("lapses", 0), c.get("factor", 0)))
+                total_items = len(ranked)
+                cards_info = ranked[offset:offset + limit]
                 note_ids = [c["note"] for c in cards_info]
 
                 with get_db_connection() as conn:
@@ -486,7 +494,6 @@ class LinkManager:
                         "reps": c.get("reps", 0)
                     })
 
-                items.sort(key=lambda x: -x.get("lapses", 0))
                 return {
                     "total": total_items,
                     "limit": limit,
@@ -593,9 +600,9 @@ class LinkManager:
             # lapses 높은 순 카드 검색 (prop:lapses>=3)
             leech_cards = AnkiConnector.invoke('findCards', query='note:"English Vocabulary" prop:lapses>=3')
             if leech_cards:
-                sample_ids = leech_cards[:400]
-                cards_info = AnkiConnector.invoke('cardsInfo', cards=sample_ids)
-                card_lapses = {c['note']: c['lapses'] for c in cards_info}
+                # 전체 카드를 보고 노트별 최대 lapses를 쓴다 (findCards 순서는 오답 수와 무관)
+                for c in AnkiConnector.invoke('cardsInfo', cards=leech_cards) or []:
+                    card_lapses[c['note']] = max(card_lapses.get(c['note'], 0), c.get('lapses', 0))
         except Exception:
             card_lapses = {}
 
