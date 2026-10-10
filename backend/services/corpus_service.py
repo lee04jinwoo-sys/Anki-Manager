@@ -222,7 +222,8 @@ class CorpusService:
             total_cards=data.get("total_cards", 0),
             tier_distribution=data.get("tier_distribution", {}),
             waste_leech_count=data.get("waste_leech_count", 0),
-            top_waste_leeches=data.get("waste_leeches_top50", [])
+            top_waste_leeches=data.get("waste_leeches_top50", []),
+            generated_at=time.strftime("%Y-%m-%d %H:%M", time.localtime(AUDIT_JSON_PATH.stat().st_mtime)),
         )
 
     @staticmethod

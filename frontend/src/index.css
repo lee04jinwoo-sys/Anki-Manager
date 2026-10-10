@@ -25,3 +25,17 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #3a3a3c;
 }
+
+/* Data-viz tokens (dark surface #1c1c1e; validated with dataviz validate_palette.js) */
+:root {
+  --viz-seq-1: #184f95; /* ordinal ramp, dim -> bright */
+  --viz-seq-2: #256abf;
+  --viz-seq-3: #3987e5;
+  --viz-seq-4: #86b6ef;
+  --viz-empty: #2a2a2d; /* no activity */
+  --viz-neutral: #5a5a5e; /* suspended / de-emphasis */
+  --viz-series-1: #3987e5; /* categorical slot 1 (dark) */
+  --viz-series-2: #d95926; /* categorical slot 2 (dark) */
+  --viz-grid: #2c2c2e;
+  --viz-surface: #1c1c1e;
+}

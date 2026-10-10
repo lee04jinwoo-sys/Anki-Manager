@@ -56,4 +56,5 @@ export interface CorpusAuditStats {
     lapses: number
     is_waste_leech: boolean
   }>
+  generated_at?: string | null
 }

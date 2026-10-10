@@ -54,3 +54,4 @@ class CorpusAuditStatsResponse(BaseModel):
     tier_distribution: Dict[str, int]
     waste_leech_count: int
     top_waste_leeches: List[Dict[str, Any]]
+    generated_at: Optional[str] = None  # 감사 파일 수정 시각 (재생성 스크립트가 저장소에 없음)

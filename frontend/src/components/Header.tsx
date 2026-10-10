@@ -1,65 +1,94 @@
 import React from 'react'
-import { RefreshCw } from 'lucide-react'
+import { Inbox, Palette, RefreshCw, Wrench } from 'lucide-react'
 import type { DashboardResponse } from '../types/dashboard'
 
 interface HeaderProps {
   data: DashboardResponse | null
   isLoading: boolean
   onRefresh: () => void
+  onOpenMaintenance: () => void
+  onOpenObsidian: () => void
+  onOpenDesign: () => void
 }
+
+const ActionButton: React.FC<{
+  icon: React.ReactNode
+  label: string
+  badge?: number
+  onClick: () => void
+  disabled?: boolean
+  title?: string
+}> = ({ icon, label, badge, onClick, disabled, title }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    disabled={disabled}
+    title={title}
+    className="inline-flex items-center gap-1.5 rounded-apple-sm border border-apple-border bg-apple-subtle px-3 py-1.5 text-xs font-medium text-apple-text transition-colors hover:border-apple-borderStrong hover:bg-apple-subtleHover disabled:opacity-40"
+  >
+    {icon}
+    <span>{label}</span>
+    {badge !== undefined && badge > 0 && (
+      <span className="rounded-full bg-apple-blue px-1.5 text-[10px] font-semibold leading-4 text-white">{badge}</span>
+    )}
+  </button>
+)
 
 export const Header: React.FC<HeaderProps> = ({
   data,
   isLoading,
   onRefresh,
+  onOpenMaintenance,
+  onOpenObsidian,
+  onOpenDesign,
 }) => {
   const isConnected = data?.connected ?? false
+  const inbox = data?.obsidian_inbox
+  const needs = data?.maintenance?.total_needs_count ?? 0
 
   return (
-    <header className="sticky top-0 z-30 bg-apple-card/80 backdrop-blur-md border-b border-apple-border px-6 py-3.5 transition-all">
-      <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
-        {/* Left: Branding & Connection Status */}
+    <header className="sticky top-0 z-30 border-b border-apple-border bg-apple-card/80 px-6 py-3 backdrop-blur-md">
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-apple-sm bg-apple-text text-white flex items-center justify-center font-semibold text-sm tracking-tight shadow-apple-subtle">
-            A
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-base font-semibold text-apple-text tracking-tight">
-                Anki Manager
-              </h1>
-              <span className="text-xs font-mono text-apple-secondary px-1.5 py-0.5 rounded bg-apple-bg border border-apple-border">
-                v2.0
-              </span>
-            </div>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <span
-                className={`inline-block w-2 h-2 rounded-full ${
-                  isConnected ? 'bg-apple-green' : 'bg-apple-red animate-pulse'
-                }`}
-              />
-              <span className="text-xs text-apple-secondary font-medium">
-                {isConnected
-                  ? `AnkiConnect v${data?.anki_version ?? '6'} Connected`
-                  : 'Anki 연결 끊김 (Anki 실행 필요)'}
-              </span>
-            </div>
-          </div>
+          <h1 className="text-base font-semibold tracking-tight text-apple-text">Anki Manager</h1>
+          <span className="inline-flex items-center gap-1.5 text-xs text-apple-secondary">
+            <span className={`inline-block h-2 w-2 rounded-full ${isConnected ? 'bg-apple-green' : 'animate-pulse bg-apple-red'}`} />
+            {isConnected ? 'Anki 연결됨' : 'Anki 연결 끊김'}
+          </span>
         </div>
 
-        {/* Right: Minimal Refresh Action */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <ActionButton
+            icon={<Inbox className="h-3.5 w-3.5 text-apple-secondary" />}
+            label="가져오기"
+            badge={inbox?.available ? inbox.total_count : undefined}
+            onClick={onOpenObsidian}
+            disabled={!isConnected}
+            title="Obsidian Inbox 항목을 Anki 카드로 등록"
+          />
+          <ActionButton
+            icon={<Wrench className="h-3.5 w-3.5 text-apple-secondary" />}
+            label="노트 정리"
+            badge={needs}
+            onClick={onOpenMaintenance}
+            disabled={!isConnected}
+            title={needs > 0 ? `오디오·뜻 누락 ${needs}개` : '빈 필드·오디오·덱 이동·중복 정리'}
+          />
+          <ActionButton
+            icon={<Palette className="h-3.5 w-3.5 text-apple-secondary" />}
+            label="디자인"
+            onClick={onOpenDesign}
+            disabled={!isConnected}
+            title="카드 템플릿·CSS 백업/복원"
+          />
           <button
             type="button"
             onClick={onRefresh}
             disabled={isLoading}
-            className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-apple-text bg-apple-subtle hover:bg-apple-subtleHover rounded-apple-sm border border-apple-border hover:border-apple-borderStrong transition-all shadow-apple-subtle disabled:opacity-40"
-            title="대시보드 새로고침"
+            title="새로고침"
+            className="rounded-apple-sm border border-apple-border p-1.5 text-apple-secondary hover:bg-apple-subtle disabled:opacity-40"
           >
-            <RefreshCw
-              className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-apple-blue' : 'text-apple-secondary'}`}
-            />
-            <span>새로고침</span>
+            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin text-apple-blue' : ''}`} />
           </button>
         </div>
       </div>

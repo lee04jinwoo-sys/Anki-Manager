@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { Header } from './components/Header'
-import { HealthCards } from './components/HealthCards'
-import { DeckGrid } from './components/DeckGrid'
+import { StatsOverview } from './components/stats/StatsOverview'
 import { LinkManagerPanel } from './components/LinkManagerPanel'
 import { JobDrawer } from './components/JobDrawer'
 import { MaintenanceModal } from './components/modals/MaintenanceModal'
@@ -33,10 +32,13 @@ export const App: React.FC = () => {
   const [isMaintenanceOpen, setIsMaintenanceOpen] = useState(false)
   const [isObsidianOpen, setIsObsidianOpen] = useState(false)
   const [isDesignOpen, setIsDesignOpen] = useState(false)
+  // 통계는 대시보드 새로고침과 함께 다시 계산한다
+  const [statsKey, setStatsKey] = useState(0)
 
   const loadDashboard = useCallback(async (isInitial = false) => {
     if (isInitial) setIsLoading(true)
     setError(null)
+    setStatsKey((k) => k + 1)
     try {
       const res = await api.getDashboard()
       setData(res)
@@ -87,6 +89,9 @@ export const App: React.FC = () => {
         data={data}
         isLoading={isLoading}
         onRefresh={() => loadDashboard(false)}
+        onOpenMaintenance={() => setIsMaintenanceOpen(true)}
+        onOpenObsidian={() => setIsObsidianOpen(true)}
+        onOpenDesign={() => setIsDesignOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -119,16 +124,8 @@ export const App: React.FC = () => {
           </div>
         ) : (
           <>
-            {/* 2. Top Summary Health Metrics Cards */}
-            <HealthCards
-              data={data}
-              onOpenMaintenance={() => setIsMaintenanceOpen(true)}
-              onOpenObsidian={() => setIsObsidianOpen(true)}
-              onOpenDesign={() => setIsDesignOpen(true)}
-            />
-
-            {/* 3. Deck Review Status Grid */}
-            <DeckGrid decks={data?.decks ?? []} />
+            {/* 2. 학습 통계: 핵심 수치 · 잔디 · 예측/정답률 · 덱별 현황 */}
+            {data?.connected && <StatsOverview refreshKey={statsKey} />}
 
             {/* 4. Unified Vocab Context & Leech Studio */}
             <LinkManagerPanel onRefreshDashboard={() => loadDashboard(false)} />

@@ -10,6 +10,7 @@ import type {
   LinkVocabItem,
   BatchGenerateResult,
 } from '../types/dashboard'
+import type { StatsOverview } from '../types/stats'
 
 const API_BASE = '/api'
 
@@ -33,6 +34,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 export const api = {
   // Dashboard
   getDashboard: (): Promise<DashboardResponse> => request<DashboardResponse>('/dashboard'),
+  getStatsOverview: (): Promise<StatsOverview> => request<StatsOverview>('/stats/overview'),
 
   // Maintenance
   getMaintenanceSteps: (): Promise<StepInfo[]> => request<StepInfo[]>('/organize/steps'),

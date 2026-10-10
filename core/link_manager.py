@@ -414,11 +414,12 @@ class LinkManager:
 
             leech_count = 0
             try:
-                leech_cards = AnkiConnector.invoke(
-                    "findCards",
+                # 단어(노트) 단위: 카드가 2장인 단어를 두 번 세지 않는다
+                leech_notes = AnkiConnector.invoke(
+                    "findNotes",
                     query=f'note:"{MODEL_VOCAB}" (prop:ease<=1.3 OR prop:lapses>=4) -is:suspended'
                 ) or []
-                leech_count = len(leech_cards)
+                leech_count = len(leech_notes)
             except Exception:
                 pass
 

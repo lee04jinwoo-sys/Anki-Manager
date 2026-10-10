@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useTransition } from 'react'
 import {
-  Link2,
   Search,
   RotateCcw,
   Sparkles,
@@ -265,128 +264,91 @@ export const LinkManagerPanel: React.FC<LinkManagerPanelProps> = ({
 
   return (
     <div className="bg-apple-card border border-apple-border rounded-apple p-5 shadow-apple-card space-y-4.5">
-      {/* 1. Header & Re-scan Button */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <div className="p-1.5 rounded-apple-sm bg-apple-blue/10 text-apple-blue">
-            <Link2 className="w-4 h-4" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-semibold text-apple-text tracking-tight">
-                어휘 연결 & 망각 위험 관리 (Vocab Context & Leech Studio)
-              </h2>
-              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-apple-bg text-apple-secondary border border-apple-border">
-                Context & Leech Center
-              </span>
-            </div>
-            <div className="text-xs text-apple-secondary mt-0.5">
-              만성 망각(Leech) 어휘 및 미연결 어휘 진단과 AI 실생활 예문 처방
-            </div>
-          </div>
+      {/* 1. Header */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-apple-text">단어 문맥 · 만성 오답</h2>
+          <p className="text-xs text-apple-secondary">
+            단어가 실제 문장 카드에 얼마나 등장하는지와 자꾸 틀리는 단어를 보고, AI 예문 생성이나 청크 승격으로 처방합니다
+          </p>
         </div>
-
         <div className="flex items-center gap-2">
           {scanMessage && (
-            <span className="text-xs text-apple-green flex items-center gap-1 font-mono">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>{scanMessage}</span>
+            <span className="flex items-center gap-1 text-xs text-apple-secondary">
+              <CheckCircle2 className="h-3.5 w-3.5 text-apple-green" />
+              {scanMessage}
             </span>
           )}
           <button
             type="button"
             onClick={handleFullScan}
             disabled={isScanning}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-apple-text bg-apple-subtle hover:bg-apple-subtleHover rounded-apple-sm border border-apple-border hover:border-apple-borderStrong transition-all shadow-apple-subtle disabled:opacity-40"
-            title="Anki 덱 전체 역색인 재동기화"
+            className="inline-flex items-center gap-1.5 rounded-apple-sm border border-apple-border bg-apple-subtle px-3 py-1.5 text-xs font-medium text-apple-text hover:border-apple-borderStrong hover:bg-apple-subtleHover disabled:opacity-40"
+            title="Anki의 모든 단어·문장을 다시 읽어 연결을 새로 계산"
           >
-            <RotateCcw
-              className={`w-3.5 h-3.5 text-apple-secondary ${
-                isScanning ? 'animate-spin text-apple-blue' : ''
-              }`}
-            />
-            <span>{isScanning ? '재스캔 중...' : '전체 재스캔'}</span>
+            <RotateCcw className={`h-3.5 w-3.5 text-apple-secondary ${isScanning ? 'animate-spin text-apple-blue' : ''}`} />
+            {isScanning ? '재스캔 중...' : '연결 재스캔'}
           </button>
         </div>
       </div>
 
-      {/* 2. Top Unified Stats Strip */}
+      {/* 2. Key numbers */}
       {stats && (
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 p-3 rounded-apple-sm bg-apple-subtle/70 border border-apple-border/80 text-xs font-mono">
-          <div>
-            <div className="text-[10px] text-apple-secondary">총 등록 어휘</div>
-            <div className="text-base font-bold text-apple-text mt-0.5">
-              {stats.total_vocab.toLocaleString()}
-              <span className="text-[10px] font-normal text-apple-secondary ml-0.5">
-                개
-              </span>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {[
+            { label: '등록 단어', value: stats.total_vocab.toLocaleString(), unit: '개', sub: `문장 연결 ${stats.total_links.toLocaleString()}건` },
+            { label: '문장에 등장하는 단어', value: coveragePercent, unit: '%', sub: '1개 이상의 문장 카드에 등장', meter: Number(coveragePercent) },
+            { label: '문장이 하나도 없는 단어', value: stats.unlinked_vocab.toLocaleString(), unit: '개', sub: '예문 생성 대상' },
+            { label: '만성 오답 단어', value: (stats.leech_count ?? 0).toLocaleString(), unit: '개', sub: 'Lapse 4회+ 또는 Ease 130% 이하' },
+          ].map((t) => (
+            <div key={t.label} className="rounded-apple-sm border border-apple-border bg-apple-subtle/60 p-3">
+              <div className="text-[11px] text-apple-secondary">{t.label}</div>
+              <div className="mt-0.5 text-lg font-semibold text-apple-text">
+                {t.value}
+                <span className="ml-0.5 text-xs font-normal text-apple-secondary">{t.unit}</span>
+              </div>
+              {t.meter !== undefined && (
+                <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-[var(--viz-empty)]">
+                  <div className="h-full rounded-full bg-[var(--viz-seq-3)]" style={{ width: `${Math.min(100, t.meter)}%` }} />
+                </div>
+              )}
+              <div className="mt-1 text-[11px] text-apple-secondary">{t.sub}</div>
             </div>
-          </div>
-          <div>
-            <div className="text-[10px] text-apple-secondary">연결 링크 매핑</div>
-            <div className="text-base font-bold text-apple-text mt-0.5">
-              {stats.total_links.toLocaleString()}
-              <span className="text-[10px] font-normal text-apple-secondary ml-0.5">
-                건
-              </span>
-            </div>
-          </div>
-          <div>
-            <div className="text-[10px] text-apple-secondary">미연결 어휘 (0개)</div>
-            <div className="text-base font-bold text-apple-orange mt-0.5">
-              {stats.unlinked_vocab.toLocaleString()}
-              <span className="text-[10px] font-normal text-apple-secondary ml-0.5">
-                개
-              </span>
-            </div>
-          </div>
-          <div>
-            <div className="text-[10px] text-apple-secondary flex items-center gap-1">
-              <Flame className="w-3 h-3 text-apple-red inline" />
-              <span>만성 망각 (Leech)</span>
-            </div>
-            <div className="text-base font-bold text-apple-red mt-0.5">
-              {(stats.leech_count ?? 0).toLocaleString()}
-              <span className="text-[10px] font-normal text-apple-secondary ml-0.5">
-                개
-              </span>
-            </div>
-          </div>
-          <div>
-            <div className="text-[10px] text-apple-secondary">문장 연결 커버리지</div>
-            <div className="text-base font-bold text-apple-green mt-0.5">
-              {coveragePercent}%
-            </div>
-          </div>
+          ))}
         </div>
       )}
 
-      {/* 2.5 Corpus Frequency Tiers Strip */}
-      {corpusStats && corpusStats.total_notes > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-apple-sm bg-apple-card border border-apple-border text-[11px] font-mono shadow-sm">
-          <div className="flex items-center gap-1.5 text-apple-secondary font-sans font-medium text-xs">
-            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span>코퍼스 5단계 빈도 감사:</span>
+      {/* 2.5 Corpus frequency tiers (one stacked bar) */}
+      {corpusStats && corpusStats.total_notes > 0 && (() => {
+        const tiers: [string, string, string][] = [["freq::tier1_essential","필수 (~3천위)","var(--viz-seq-4)"],["freq::tier2_common","상용 (~1만위)","var(--viz-seq-3)"],["freq::tier3_advanced","고급 (~2.5만위)","var(--viz-seq-2)"],["freq::tier4_academic","학술 (~6만위)","var(--viz-seq-1)"],["freq::tier5_rare","희귀","var(--viz-neutral)"]]
+        const total = tiers.reduce((acc, [k]) => acc + (corpusStats.tier_distribution[k] ?? 0), 0) || 1
+        return (
+          <div className="rounded-apple-sm border border-apple-border p-3">
+            <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+              <span className="text-xs font-medium text-apple-text">단어 빈도 등급 (영어 코퍼스 순위 기준)</span>
+              <span className="text-[11px] text-apple-secondary">
+                {corpusStats.total_notes.toLocaleString()}개 단어{corpusStats.generated_at ? ` · ${corpusStats.generated_at} 기준` : ''}
+              </span>
+            </div>
+            <div className="flex h-2.5 w-full gap-[2px] overflow-hidden rounded-full">
+              {tiers.map(([k, label, color]) => {
+                const v = corpusStats.tier_distribution[k] ?? 0
+                return v > 0 ? (
+                  <div key={k} title={`${label}: ${v.toLocaleString()}개 (${((v / total) * 100).toFixed(1)}%)`} style={{ width: `${(v / total) * 100}%`, background: color }} />
+                ) : null
+              })}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-apple-secondary">
+              {tiers.map(([k, label, color]) => (
+                <span key={k} className="inline-flex items-center gap-1.5">
+                  <span className="inline-block h-2 w-2 rounded-full" style={{ background: color }} />
+                  {label} <span className="font-mono text-apple-text">{(corpusStats.tier_distribution[k] ?? 0).toLocaleString()}</span>
+                </span>
+              ))}
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-              🟢 필수 (Tier 1): {(corpusStats.tier_distribution['freq::tier1_essential'] ?? 0).toLocaleString()}개
-            </span>
-            <span className="px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
-              🟡 상용 (Tier 2): {(corpusStats.tier_distribution['freq::tier2_common'] ?? 0).toLocaleString()}개
-            </span>
-            <span className="px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-              🔵 고급 (Tier 3): {(corpusStats.tier_distribution['freq::tier3_advanced'] ?? 0).toLocaleString()}개
-            </span>
-            <span className="px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20">
-              🟣 학술 (Tier 4): {(corpusStats.tier_distribution['freq::tier4_academic'] ?? 0).toLocaleString()}개
-            </span>
-            <span className="px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-              🔬 전공/전문 (Tier 5): {(corpusStats.tier_distribution['freq::tier5_rare'] ?? 0).toLocaleString()}개
-            </span>
-          </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* 3. Controls & Filter Bar */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pt-1">
