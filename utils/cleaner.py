@@ -54,6 +54,8 @@ def clean_duplicates():
         AnkiConnector.invoke("addTags", notes=loser_notes, tags=DUPLICATE_TAG)
         if loser_cards:
             AnkiConnector.invoke("suspend", cards=loser_cards)
+
+
 def find_leeches(note_type="English Vocabulary"):
     note_ids = AnkiConnector.invoke("findNotes", query=f'note:"{note_type}"')
     if not note_ids: return []

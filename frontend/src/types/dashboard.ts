@@ -71,7 +71,7 @@ export interface Candidates {
   vocab: CandidateVocab[]
 }
 
-export type JobStatus = 'idle' | 'running' | 'waiting_selection' | 'success' | 'error'
+export type JobStatus = 'idle' | 'running' | 'waiting_selection' | 'success' | 'error' | 'cancelled'
 
 export interface JobState {
   is_running: boolean

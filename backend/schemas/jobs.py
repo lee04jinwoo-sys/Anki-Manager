@@ -6,7 +6,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 LogLevel = Literal["info", "success", "warn", "error"]
-JobStatus = Literal["idle", "running", "waiting_selection", "success", "error"]
+JobStatus = Literal["idle", "running", "waiting_selection", "success", "error", "cancelled"]
 
 
 class LogEntry(BaseModel):

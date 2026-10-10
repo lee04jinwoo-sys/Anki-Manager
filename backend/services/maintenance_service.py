@@ -66,12 +66,13 @@ def run_steps_blocking(steps: list[StepId], *, base: int = 15, span: int = 80) -
     order = ordered_steps(steps)
     total = len(order)
     for i, step in enumerate(order):
+        jobs.raise_if_cancelled()
         jobs.emit(f"{_LABELS[step]} 진행 중... ({i + 1}/{total})", progress=base + int(span * i / total))
         _STEP_FUNCS[step]()
         jobs.emit(f"{_LABELS[step]} 완료", progress=base + int(span * (i + 1) / total))
 
 
-def start_maintenance(steps: list[StepId] | None = None) -> ActionResult:
+def start_job(steps: list[StepId] | None = None) -> ActionResult:
     selected = steps or list(DEFAULT_STEPS)
     return jobs.start(
         "노트 정리",
