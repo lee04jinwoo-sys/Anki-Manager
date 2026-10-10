@@ -288,16 +288,32 @@ def run_universal_field_completion(pbar=None):
             current_data = {f: fields[f] for f in config["all_fields"] if fields.get(f, "").strip()}
             
             result = completer.complete_fields(model_name, main_val, current_data, missing_fields)
-            if result:
-                AnkiConnector.update_note_fields(note_id, result)
-                _print(pbar, f"✅ 보강 완료: {main_val[:30]}")
+            # AI가 기존 필드(단어·정답 등)까지 돌려줘도 비어 있던 필드에만 쓴다.
+            updates = {
+                k: v for k, v in (result or {}).items()
+                if k in missing_fields and isinstance(v, str) and v.strip()
+            }
+            if updates:
+                AnkiConnector.update_note_fields(note_id, updates)
+                _print(pbar, f"✅ 보강 완료: {main_val[:30]} ({', '.join(updates)})")
                 return True
             return False
 
+        def safe_process_note(n):
+            try:
+                return process_note(n)
+            except Exception as e:
+                failed.append(n.get('noteId'))
+                _print(pbar, f"❌ 보강 실패 (note {n.get('noteId')}): {e}")
+                return False
+
+        failed = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=NOTE_COMPLETOR_MAX_WORKERS) as ex:
-            results = list(ex.map(process_note, notes_info))
+            results = list(ex.map(safe_process_note, notes_info))
             total_updated += sum(results)
-            
+        if failed:
+            _print(pbar, f"⚠️ {model_name}: {len(failed)}개 노트 보강 실패 (note id: {failed[:20]})")
+
     _print(pbar, f"🎉 총 {total_updated}개의 카드를 보강했습니다.")
     return True
 
