@@ -9,6 +9,7 @@ import { ObsidianModal } from './components/modals/ObsidianModal'
 import { DesignModal } from './components/modals/DesignModal'
 import type { DashboardResponse, JobState } from './types/dashboard'
 import { api } from './api/client'
+import { shouldRefreshAfterPoll } from './lib/jobPolling'
 import { Loader2, AlertCircle } from 'lucide-react'
 
 export const App: React.FC = () => {
@@ -68,11 +69,7 @@ export const App: React.FC = () => {
         setJobState(currentJob)
 
         // When a running job finishes, refresh dashboard data
-        if (
-          isJobActive &&
-          !currentJob.is_running &&
-          (currentJob.status === 'success' || currentJob.status === 'error')
-        ) {
+        if (shouldRefreshAfterPoll(isJobActive, currentJob)) {
           loadDashboard(false)
         }
       } catch (e) {

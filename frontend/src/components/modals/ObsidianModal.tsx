@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import type { Candidates } from '../../types/dashboard'
 import { api } from '../../api/client'
+import { interpretExtractState } from '../../lib/jobPolling'
 
 interface ObsidianModalProps {
   isOpen: boolean
@@ -31,48 +32,53 @@ export const ObsidianModal: React.FC<ObsidianModalProps> = ({
     if (!isOpen) return
 
     let isMounted = true
+    let pollInterval: ReturnType<typeof setInterval> | undefined
     setIsExtracting(true)
     setError(null)
 
-    // Trigger extract
+    const fail = (message: string) => {
+      if (pollInterval) clearInterval(pollInterval)
+      if (isMounted) {
+        setError(message)
+        setIsExtracting(false)
+      }
+    }
+
     api
       .extractObsidian()
-      .then(() => {
-        // Poll for candidate data
-        const pollInterval = setInterval(async () => {
+      .then((res) => {
+        if (res.status !== 'success') {
+          fail(res.message || 'Obsidian Inbox 추출을 시작하지 못했습니다.')
+          return
+        }
+        // Poll for candidate data until the extract job settles
+        pollInterval = setInterval(async () => {
           if (!isMounted) return
           try {
-            const state = await api.getJobState()
-            if (state.status === 'waiting_selection' || state.status === 'idle') {
-              clearInterval(pollInterval)
-              if (isMounted) {
-                setCandidates(state.candidates)
-                // Select all by default
-                setSelectedVocabIndices(new Set(state.candidates.vocab.map((_, i) => i)))
-                setSelectedSentenceIndices(new Set(state.candidates.sentences.map((_, i) => i)))
-                setIsExtracting(false)
-              }
-            } else if (state.status === 'error') {
-              clearInterval(pollInterval)
-              if (isMounted) {
-                setError(state.current_step || '추출 중 오류 발생')
-                setIsExtracting(false)
-              }
+            const outcome = interpretExtractState(await api.getJobState())
+            if (outcome.kind === 'wait') return
+            if (outcome.kind === 'error') {
+              fail(outcome.message)
+              return
+            }
+            clearInterval(pollInterval)
+            if (isMounted) {
+              setCandidates(outcome.candidates)
+              // Select all by default
+              setSelectedVocabIndices(new Set(outcome.candidates.vocab.map((_, i) => i)))
+              setSelectedSentenceIndices(new Set(outcome.candidates.sentences.map((_, i) => i)))
+              setIsExtracting(false)
             }
           } catch (e) {
             console.error('Polling error:', e)
           }
         }, 1000)
       })
-      .catch((err) => {
-        if (isMounted) {
-          setError(err instanceof Error ? err.message : 'Obsidian Inbox 읽기 실패')
-          setIsExtracting(false)
-        }
-      })
+      .catch((err) => fail(err instanceof Error ? err.message : 'Obsidian Inbox 읽기 실패'))
 
     return () => {
       isMounted = false
+      if (pollInterval) clearInterval(pollInterval)
     }
   }, [isOpen])
 

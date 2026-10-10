@@ -7,20 +7,34 @@ from nltk.corpus import wordnet
 
 logger = logging.getLogger("PosAutomator")
 
-# NLTK 필수 데이터 다운로드
+# NLTK 필수 데이터: (리소스 경로, 다운로드 패키지명)
+_NLTK_RESOURCES = [
+    ("tokenizers/punkt", "punkt"),
+    ("tokenizers/punkt_tab", "punkt_tab"),
+    ("taggers/averaged_perceptron_tagger", "averaged_perceptron_tagger"),
+    ("taggers/averaged_perceptron_tagger_eng", "averaged_perceptron_tagger_eng"),
+    ("corpora/wordnet", "wordnet"),
+    ("corpora/omw-1.4", "omw-1.4"),
+]
+
+
+def _nltk_has(resource: str) -> bool:
+    # 코퍼스는 zip으로만 설치되기도 한다 (corpora/wordnet.zip). nltk는 zip을 그대로 읽는다.
+    for name in (resource, resource + ".zip"):
+        try:
+            nltk.data.find(name)
+            return True
+        except LookupError:
+            continue
+    return False
+
+
 def setup_nltk():
-    try:
-        nltk.data.find('tokenizers/punkt')
-        nltk.data.find('taggers/averaged_perceptron_tagger')
-        nltk.data.find('corpora/wordnet')
-    except LookupError:
-        logger.info("NLTK 데이터를 다운로드 중입니다...")
-        nltk.download('punkt')
-        nltk.download('averaged_perceptron_tagger')
-        nltk.download('wordnet')
-        nltk.download('omw-1.4')
-        nltk.download('punkt_tab')
-        nltk.download('averaged_perceptron_tagger_eng')
+    """없는 리소스만 내려받는다."""
+    for resource, package in _NLTK_RESOURCES:
+        if not _nltk_has(resource):
+            logger.info(f"NLTK 데이터 다운로드: {package}")
+            nltk.download(package, quiet=True)
 
 def get_simple_pos(word: str) -> str:
     """

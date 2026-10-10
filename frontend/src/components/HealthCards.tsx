@@ -160,6 +160,7 @@ export const HealthCards: React.FC<HealthCardsProps> = ({
               <span className="text-2xl font-bold tracking-tight text-apple-red font-mono">
                 {leechesTotal.toLocaleString()}
               </span>
+              <span className="text-xs text-apple-secondary">장</span>
               <span className="text-xs text-apple-secondary">
                 Lapse ≥ 4회 또는 Ease ≤ 130%
               </span>
