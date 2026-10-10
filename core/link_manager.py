@@ -173,34 +173,33 @@ class PatternMatcher:
             return rf"(?:{re.escape(base)}(?:y|ies|ied|ying)|{re.escape(low)})"
         return rf"{re.escape(low)}(?:s|ed|es|ing)?"
 
+    INDEX_PREFIX_LEN = 3
+
+    @classmethod
+    def index_key(cls, token: str) -> str:
+        """역색인 키: 앞 3글자. 변화형(accommodated, carried, loved)도 원형과 같은 키를 갖는다."""
+        return token[:cls.INDEX_PREFIX_LEN]
+
     @classmethod
     def get_index_keywords(cls, cleaned_text: str) -> List[str]:
         """
-        역색인 조회를 위한 고특이도(high-specificity) 키워드 추출
-        - be, have, 전치사 등 초빈출어는 제외하고 실제 의미어를 최우선 추출!
+        역색인 사전 필터용 키워드(앞 3글자) 추출. 최종 판정은 build_regex가 한다.
+        - 불규칙 동사(take/took, run/ran)는 접두어가 바뀌므로 키에서 뺀다.
+        - 전치사·관사·be/have/do, 플레이스홀더, '/' 대안 표기, 괄호 안 내용은 뺀다.
+        - 키가 하나도 없으면 빈 리스트 → 호출부가 전체 문장을 정규식으로 검사한다.
         """
-        tokens = cleaned_text.lower().split()
-        content_candidates = []
-        fallback_candidates = []
-
-        for t in tokens:
-            t_clean = re.sub(r"[^\w'-]", '', t)
-            if not t_clean or t.upper() in ('A', 'B', 'C', 'V', 'V-ING', 'V_ING'):
+        text = re.sub(r'\(.*?\)', '', cleaned_text).lower()
+        keys = []
+        for t in text.split():
+            if '/' in t or t.upper() in ('A', 'B', 'C', 'V', 'V-ING', 'V_ING'):
                 continue
-            if len(t_clean) >= 2:
-                if t_clean not in cls.PREPOSITIONS_AND_ARTICLES and t_clean not in ('be', 'have', 'do'):
-                    content_candidates.append(t_clean)
-                else:
-                    fallback_candidates.append(t_clean)
-
-        # 실질 의미어가 있으면 그것만 역색인 키워드로 사용
-        target_list = content_candidates if content_candidates else fallback_candidates
-        keywords = []
-        for w in target_list:
-            keywords.append(w)
-            if len(w) > 4:
-                keywords.append(w[:4])
-        return keywords
+            t_clean = re.sub(r"[^\w'-]", '', t)
+            if len(t_clean) < 2 or t_clean in cls.IRREGULAR_VERBS:
+                continue
+            if t_clean in cls.PREPOSITIONS_AND_ARTICLES or t_clean in ('be', 'have', 'do'):
+                continue
+            keys.append(cls.index_key(t_clean))
+        return keys
 
     @classmethod
     def build_regex(cls, word_or_idiom: str) -> Optional[re.Pattern]:
@@ -315,9 +314,7 @@ class LinkManager:
                 # 문장 단어 토큰화
                 tokens = re.findall(r"\b[a-zA-Z'-]+\b", stext.lower())
                 for t in tokens:
-                    inverted_index[t].add(nid)
-                    if len(t) > 4:
-                        inverted_index[t[:4]].add(nid)
+                    inverted_index[PatternMatcher.index_key(t)].add(nid)
 
         # 3. 단어 데이터 정제 및 정규식 컴파일
         vocabs = []
@@ -349,23 +346,16 @@ class LinkManager:
                 continue
 
             keywords = v["keywords"]
-            candidate_sids: Optional[Set[int]] = None
-
             if keywords:
-                # 키워드들 중 역색인에 걸리는 문장 ID들의 교집합/합집합 탐색
-                # 가장 희귀한 키워드를 찾아 후보군 대폭 축소
-                for kw in keywords:
-                    matching_ids = inverted_index.get(kw)
-                    if matching_ids:
-                        if candidate_sids is None:
-                            candidate_sids = set(matching_ids)
-                        else:
-                            # 부분 집합
-                            candidate_sids = candidate_sids.intersection(matching_ids)
-                            if not candidate_sids:
-                                break
-
-            # 만약 키워드로 후보군이 안 잡히면(매우 특수한 경우) 건너뜀
+                # 모든 키워드(앞 3글자)를 가진 문장만 후보로 남긴다. 하나라도 없으면 후보 없음.
+                candidate_sids: Set[int] = set(inverted_index.get(keywords[0], ()))
+                for kw in keywords[1:]:
+                    if not candidate_sids:
+                        break
+                    candidate_sids &= inverted_index.get(kw, set())
+            else:
+                # 불규칙 동사·기능어로만 된 표현은 사전 필터 없이 전체 문장을 정규식으로 검사
+                candidate_sids = set(sentences_dict)
             if not candidate_sids:
                 continue
 
