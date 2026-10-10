@@ -80,7 +80,11 @@ def bridge_add_items(items, enrich=True):
                                 # If it's a nested dict like {"fields": {...}}, unwrap it
                                 if len(enriched) == 1 and isinstance(list(enriched.values())[0], dict):
                                     enriched = list(enriched.values())[0]
-                                fields.update(enriched)
+                                # 사용자가 준 필드는 그대로 두고, 비어 있던 필드만 AI 결과로 채운다.
+                                fields.update({
+                                    k: v for k, v in enriched.items()
+                                    if k in missing and isinstance(v, str) and v.strip()
+                                })
                             else:
                                 print(f"⚠️ Unexpected enrichment format for {main_val[:20]}: {type(enriched)}")
                     except Exception as e:
@@ -108,15 +112,14 @@ def bridge_add_items(items, enrich=True):
         results = list(executor.map(process_item, items))
     
     from utils.organizer import run_organizer
-    from utils.cleaner import clean_duplicates
 
     added_count = sum(1 for r in results if r)
     if added_count > 0:
         print(f"🔊 Generating audio for {added_count} items...")
         AnkiTTSFiller.run_audio_addition()
-        
-        print("🧹 Cleaning up duplicates and organizing cards...")
-        clean_duplicates()
+
+        # 중복 정리는 컬렉션 전체를 건드리므로 여기서 자동 실행하지 않는다 (웹 UI '노트 정리'에서 명시적으로 실행).
+        print("🧹 Organizing cards...")
         run_organizer()
         
         print("✨ All tasks completed successfully.")
