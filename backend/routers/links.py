@@ -10,6 +10,8 @@ from core.link_manager import (
     LinkManager, backup_templates, clean_text, init_db
 )
 from core.batch_generator import BatchSentenceGenerator
+from backend.services.corpus_service import evaluate_expression_rank_and_tier
+from backend.services.leech_service import suggest_action
 
 logger = logging.getLogger("LinksRouter")
 router = APIRouter(prefix="/api/links", tags=["links"])
@@ -40,13 +42,23 @@ def get_vocab_list(
 ):
     """연결 적은 순 정렬 단어 목록 조회"""
     try:
-        return LinkManager.get_vocab_list(
+        res = LinkManager.get_vocab_list(
             limit=limit,
             offset=offset,
             filter_mode=filter_mode,
             max_links=max_links,
             search=search
         )
+        if filter_mode == "leech":
+            # 단어별 처리 방법 추천 (빈도 등급은 로컬 코퍼스 DB 조회)
+            for item in res.get("items", []):
+                _, tier = evaluate_expression_rank_and_tier(item.get("word", ""))
+                item["tier"] = tier
+                item["suggestion"] = suggest_action(
+                    word=item.get("word", ""), lapses=int(item.get("lapses", 0) or 0),
+                    link_count=int(item.get("link_count", 0) or 0), tier=tier, pos=item.get("pos", ""),
+                )
+        return res
     except Exception as e:
         logger.error(f"단어 목록 조회 실패: {e}")
         raise HTTPException(status_code=500, detail=str(e))
