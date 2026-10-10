@@ -55,4 +55,5 @@ class BulkCardResponse(BaseModel):
     success: bool
     count: int = 0
     total: int = 0
+    skipped: int = 0  # 중복 등으로 추가할 수 없어 건너뛴 노트 수
     error: Optional[str] = None

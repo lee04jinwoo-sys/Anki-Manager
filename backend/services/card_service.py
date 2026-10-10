@@ -101,6 +101,34 @@ def generate_sentence_audio(text: str) -> str:
         return ""
 
 
+def add_notes_skipping_failures(notes: List[Dict[str, Any]]) -> List[Optional[int]]:
+    """notes와 같은 순서로 note id(추가 못 한 것은 None)를 돌려준다.
+
+    AnkiConnect addNotes는 하나라도 실패하면 배치 전체를 롤백하므로,
+    canAddNotes로 추가 가능한 노트만 골라 넣는다.
+    """
+    if not notes:
+        return []
+    can_add = AnkiConnector.invoke("canAddNotes", notes=notes) or [False] * len(notes)
+    addable = [n for n, ok in zip(notes, can_add) if ok]
+    try:
+        added_ids = iter(AnkiConnector.invoke("addNotes", notes=addable) or []) if addable else iter(())
+        return [next(added_ids, None) if ok else None for ok in can_add]
+    except Exception as e:
+        # 확인과 추가 사이에 상태가 바뀐 경우: 한 장씩 추가
+        logger.warning(f"addNotes batch failed, falling back to one-by-one: {e}")
+        results: List[Optional[int]] = []
+        for n, ok in zip(notes, can_add):
+            if not ok:
+                results.append(None)
+                continue
+            try:
+                results.append(AnkiConnector.invoke("addNote", note=n))
+            except Exception:
+                results.append(None)
+        return results
+
+
 def clean_vocab_example(example: str) -> str:
     """예문에서 불필요한 마크다운 및 태그 정제"""
     if not example:
@@ -198,6 +226,7 @@ def create_bulk_sentences(req: SentenceBulkCreateRequest) -> BulkCardResponse:
     CHUNK_SIZE = 50
     chunks = [items_to_process[i:i + CHUNK_SIZE] for i in range(0, len(items_to_process), CHUNK_SIZE)]
     total_success_count = 0
+    total_skipped = 0
 
     for chunk in chunks:
         chunk_payload = []
@@ -222,8 +251,9 @@ def create_bulk_sentences(req: SentenceBulkCreateRequest) -> BulkCardResponse:
             continue
 
         try:
-            results = AnkiConnector.invoke("addNotes", notes=chunk_payload)
-            for nid, s_text in zip(results or [], raw_sentences):
+            results = add_notes_skipping_failures(chunk_payload)
+            total_skipped += sum(1 for nid in results if not nid)
+            for nid, s_text in zip(results, raw_sentences):
                 if nid:
                     total_success_count += 1
                     # 백그라운드 오디오 큐 등록
@@ -236,7 +266,7 @@ def create_bulk_sentences(req: SentenceBulkCreateRequest) -> BulkCardResponse:
         except Exception as chunk_err:
             logger.error(f"Error adding sentence chunk: {chunk_err}")
 
-    return BulkCardResponse(success=True, count=total_success_count, total=len(req.items))
+    return BulkCardResponse(success=True, count=total_success_count, total=len(req.items), skipped=total_skipped)
 
 
 def create_vocab_card(req: VocabCreateRequest) -> CardResponse:
@@ -320,6 +350,7 @@ def create_bulk_vocabs(req: VocabBulkCreateRequest) -> BulkCardResponse:
     CHUNK_SIZE = 50
     chunks = [req.items[i:i + CHUNK_SIZE] for i in range(0, len(req.items), CHUNK_SIZE)]
     total_success_count = 0
+    total_skipped = 0
 
     for chunk in chunks:
         chunk_payload = []
@@ -355,8 +386,9 @@ def create_bulk_vocabs(req: VocabBulkCreateRequest) -> BulkCardResponse:
             continue
 
         try:
-            results = AnkiConnector.invoke("addNotes", notes=chunk_payload)
-            for nid, (w, m, p) in zip(results or [], raw_items):
+            results = add_notes_skipping_failures(chunk_payload)
+            total_skipped += sum(1 for nid in results if not nid)
+            for nid, (w, m, p) in zip(results, raw_items):
                 if nid:
                     total_success_count += 1
                     # 백그라운드 오디오 큐 등록
@@ -369,5 +401,4 @@ def create_bulk_vocabs(req: VocabBulkCreateRequest) -> BulkCardResponse:
         except Exception as chunk_err:
             logger.error(f"Error adding vocab chunk: {chunk_err}")
 
-    return BulkCardResponse(success=True, count=total_success_count, total=len(req.items))
-
+    return BulkCardResponse(success=True, count=total_success_count, total=len(req.items), skipped=total_skipped)
