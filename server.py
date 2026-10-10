@@ -1,9 +1,10 @@
 import os
+import re
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -11,10 +12,26 @@ logger = logging.getLogger("AnkiManagerWeb")
 
 app = FastAPI(title="Anki Manager Web")
 
-# CORS setup
+# 로컬 출처만 허용한다: Vite 개발 서버, 이 서버, Anki 데스크톱 카드 웹뷰(127.0.0.1:임의 포트).
+LOCAL_ORIGIN_REGEX = r"^http://(localhost|127\.0\.0\.1)(:\d+)?$"
+_LOCAL_ORIGIN = re.compile(LOCAL_ORIGIN_REGEX)
+_SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+
+
+@app.middleware("http")
+async def reject_cross_site_writes(request, call_next):
+    # CORS는 응답 읽기만 막고, 본문 없는 POST는 다른 사이트에서도 전송·실행된다.
+    # 브라우저는 교차 출처 POST에 Origin을 붙이므로, 로컬이 아닌 Origin의 쓰기 요청은 거부한다.
+    # Origin이 없는 요청(curl, agent_bridge 등 로컬 프로세스)은 허용한다.
+    origin = request.headers.get("origin")
+    if request.method not in _SAFE_METHODS and origin is not None and not _LOCAL_ORIGIN.match(origin):
+        return JSONResponse(status_code=403, content={"detail": "cross-site request rejected"})
+    return await call_next(request)
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origin_regex=LOCAL_ORIGIN_REGEX,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],

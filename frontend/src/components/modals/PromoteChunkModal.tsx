@@ -96,6 +96,14 @@ export const PromoteChunkModal: React.FC<PromoteChunkModalProps> = ({
 
   const handlePromote = async () => {
     if (!targetItem || !selectedChunk.trim()) return
+    if (
+      resetToNew &&
+      !window.confirm(
+        `'${targetItem.word}' 카드가 '${selectedChunk.trim()}'(으)로 바뀌고 학습 이력(간격·복습 횟수)이 초기화됩니다.\n` +
+          '원본은 data/backups/promote/ 에 저장됩니다. 진행할까요?',
+      )
+    )
+      return
 
     setIsPromoting(true)
     setError(null)

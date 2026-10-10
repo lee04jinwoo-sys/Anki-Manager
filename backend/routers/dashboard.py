@@ -138,7 +138,7 @@ def get_dashboard_summary() -> DashboardResponse:
     missing_audio = 0
     missing_fields = 0
     try:
-        audio_ids = AnkiConnector.find_notes(f'note:"{MODEL_VOCAB}" "오디오:"')
+        audio_ids = AnkiConnector.find_notes(f'note:"{MODEL_VOCAB}" 소리:')
         missing_audio = len(audio_ids)
     except Exception as e:
         logger.debug("오디오 누락 조회 실패: %s", e)

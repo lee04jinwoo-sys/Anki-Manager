@@ -14,7 +14,6 @@ from backend.schemas.jobs import ActionResult
 from backend.schemas.maintenance import StepInfo, MaintenanceRunRequest
 from backend.services import maintenance_service
 from backend.services.jobs import jobs
-from integrations.anki_connect import AnkiConnector
 
 logger = logging.getLogger("AnkiManagerOrganize")
 router = APIRouter(prefix="/api/organize", tags=["organize"])
@@ -62,11 +61,4 @@ def organize_duplicates() -> ActionResult:
 
 @router.post("/sync")
 def organize_sync() -> ActionResult:
-    jobs.emit("Anki Web 동기화 요청 중...", progress=50, level="info")
-    try:
-        AnkiConnector.invoke("sync")
-        jobs.emit("Anki Web 동기화 완료", progress=100, level="success")
-        return ActionResult(status="success", message="Anki Web 동기화가 완료되었습니다.")
-    except Exception as e:
-        jobs.emit(f"동기화 실패: {e}", level="error")
-        return ActionResult(status="error", message=str(e))
+    return maintenance_service.start_sync()

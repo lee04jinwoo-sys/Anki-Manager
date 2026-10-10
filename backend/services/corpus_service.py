@@ -4,6 +4,7 @@ import os
 import re
 import html
 import json
+import time
 import sqlite3
 import logging
 import requests
@@ -34,6 +35,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = BASE_DIR / "data"
 CORPUS_DB_PATH = DATA_DIR / "frequency_corpus.db"
 AUDIT_JSON_PATH = DATA_DIR / "vocab_corpus_audit.json"
+PROMOTE_BACKUP_DIR = DATA_DIR / "backups" / "promote"
 
 lemmatizer = WordNetLemmatizer()
 
@@ -117,28 +119,6 @@ def evaluate_expression_rank_and_tier(raw_text: str) -> Tuple[int, str]:
     return rank, tier
 
 
-class CorpusService:
-    @staticmethod
-    def get_audit_stats() -> CorpusAuditStatsResponse:
-        """단어 덱 16,000장 전수 빈도 감사 결과 반환"""
-        if not AUDIT_JSON_PATH.exists():
-            return CorpusAuditStatsResponse(
-                total_notes=0,
-                total_cards=0,
-                tier_distribution={},
-                waste_leech_count=0,
-                top_waste_leeches=[]
-            )
-        with open(AUDIT_JSON_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return CorpusAuditStatsResponse(
-            total_notes=data.get("total_notes", 0),
-            total_cards=data.get("total_cards", 0),
-            tier_distribution=data.get("tier_distribution", {}),
-            waste_leech_count=data.get("waste_leech_count", 0),
-            top_waste_leeches=data.get("waste_leeches_top50", [])
-        )
-
 def fetch_google_1t_tokens(word: str) -> Dict[str, List[str]]:
     """
     Google Web 1T 코퍼스 기반으로 단어 앞/뒤에 가장 빈번하게 결합하는 토큰 추출 (Datamuse API)
@@ -206,6 +186,21 @@ def fetch_google_books_ngram_frequencies(chunks: List[str]) -> Dict[str, float]:
         logger.warning(f"Google Books Ngram query failed: {e}")
 
     return freq_map
+
+
+def _write_promote_backup(req: PromoteChunkRequest, note_info: Dict[str, Any], cards_info: List[Dict[str, Any]]) -> Path:
+    PROMOTE_BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y%m%d_%H%M%S")
+    path = PROMOTE_BACKUP_DIR / f"{req.note_id}_{stamp}.json"
+    keep = ("cardId", "deckName", "interval", "factor", "reps", "lapses", "due", "type", "queue", "left", "mod")
+    payload = {
+        "saved_at": stamp,
+        "request": req.model_dump(),
+        "note": {k: note_info.get(k) for k in ("noteId", "modelName", "tags", "fields", "cards")},
+        "cards": [{k: c.get(k) for k in keep} for c in cards_info],
+    }
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return path
 
 
 class CorpusService:
@@ -364,6 +359,11 @@ class CorpusService:
                 )
             note_info = notes[0]
             card_ids = note_info.get("cards", [])
+
+            # 1-1. 덮어쓰기·이력 초기화 전에 원본 노트와 카드 상태를 저장한다. 실패하면 중단.
+            cards_info = AnkiConnector.invoke("cardsInfo", cards=card_ids) if card_ids else []
+            backup_path = _write_promote_backup(req, note_info, cards_info or [])
+            logger.info(f"Promote backup written: {backup_path}")
 
             # 2. Generate gTTS Audio for new chunk
             sound_tag, _ = AnkiTTSFiller.generate_gtts(req.new_chunk)

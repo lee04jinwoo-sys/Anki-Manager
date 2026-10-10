@@ -99,3 +99,27 @@ def test_cancel_clears_waiting_selection(client):
     client.post("/api/workflow/cancel")
     s = jobs.snapshot()
     assert s.status == "idle" and s.candidates.sentences == []
+
+
+def test_sync_runs_as_job_and_does_not_clobber_idle_state(client, monkeypatch):
+    from integrations.anki_connect import AnkiConnector
+    called = []
+    monkeypatch.setattr(AnkiConnector, "invoke", staticmethod(lambda action, **p: called.append(action)))
+    jobs.reset()
+    r = client.post("/api/organize/sync")
+    assert r.status_code == 200 and r.json()["status"] == "success"
+    _wait_idle()
+    s = jobs.snapshot()
+    assert called == ["sync"]
+    assert s.source == "Anki Web 동기화" and s.status == "success"
+
+
+def test_sync_refused_while_other_job_running(client, fake_steps, monkeypatch):
+    from integrations.anki_connect import AnkiConnector
+    called = []
+    monkeypatch.setattr(AnkiConnector, "invoke", staticmethod(lambda action, **p: called.append(action)))
+    jobs.reset()
+    client.post("/api/organize/run", json={"steps": ["fields"]})
+    r = client.post("/api/organize/sync")
+    assert r.json()["status"] == "error"
+    assert called == []
