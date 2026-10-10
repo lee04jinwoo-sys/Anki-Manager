@@ -16,12 +16,14 @@ import {
 } from 'lucide-react'
 import { api } from '../api/client'
 import type {
+  LeechAction,
   LinkStats,
   LinkVocabItem,
   LinkVocabResponse,
 } from '../types/dashboard'
 import type { CorpusAuditStats } from '../types/corpus'
 import { PromoteChunkModal } from './modals/PromoteChunkModal'
+import { LEECH_ACTIONS, actionLabel, choiceFor, planActions } from '../lib/leechPlan'
 
 interface LinkManagerPanelProps {
   onRefreshDashboard?: () => void
@@ -70,6 +72,11 @@ export const LinkManagerPanel: React.FC<LinkManagerPanelProps> = ({
   )
 
   const [, startTransition] = useTransition()
+
+  // Leech 처리: 단어별 선택(기본값은 서버 추천), 승격 대기열
+  const [choices, setChoices] = useState<Map<number, LeechAction>>(new Map())
+  const [promoteQueue, setPromoteQueue] = useState<LinkVocabItem[]>([])
+  const [isApplying, setIsApplying] = useState(false)
 
   // Debounce search query
   useEffect(() => {
@@ -249,6 +256,74 @@ export const LinkManagerPanel: React.FC<LinkManagerPanelProps> = ({
       setIsGenerating(false)
     }
   }
+
+  const setChoice = (noteId: number, action: LeechAction) =>
+    setChoices((prev) => new Map(prev).set(noteId, action))
+
+  // 승격 대기열: 창이 닫힐 때마다 다음 단어를 연다
+  useEffect(() => {
+    if (promoteQueue.length > 0 && !isChunkModalOpen) {
+      setChunkModalItem(promoteQueue[0]!)
+      setIsChunkModalOpen(true)
+    }
+  }, [promoteQueue, isChunkModalOpen])
+
+  const closeChunkModal = () => {
+    setIsChunkModalOpen(false)
+    setPromoteQueue((q) => (q.length > 0 && q[0]!.note_id === chunkModalItem?.note_id ? q.slice(1) : q))
+  }
+
+  const waitForJobThenRefresh = async () => {
+    const deadline = Date.now() + 10 * 60 * 1000
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 1500))
+      try {
+        const st = await api.getJobState()
+        if (!st.is_running) break
+      } catch {
+        break
+      }
+    }
+    await fetchStats()
+    await fetchVocab()
+    if (onRefreshDashboard) onRefreshDashboard()
+  }
+
+  const handleApplyLeech = async () => {
+    const plan = planActions(Array.from(selectedMap.values()), choices)
+    const c = plan.counts
+    const lines = [
+      `다시 학습 ${c.review_today} · 예문 추가 ${c.examples} · 청크 승격 ${c.promote} · 초기화 ${c.reset} · 건너뛰기 ${c.skip}`,
+      c.reset > 0 ? '⚠ 초기화한 카드는 학습 기록이 끊깁니다 (실행 전 상태는 data/backups/leech/ 에 저장).' : '',
+      c.promote > 0 ? '청크 승격은 적용 후 단어마다 후보를 보고 직접 고릅니다.' : '',
+      '진행할까요?',
+    ].filter(Boolean)
+    if (!window.confirm(lines.join('\n'))) return
+
+    setIsApplying(true)
+    setError(null)
+    try {
+      if (plan.batch.length > 0) {
+        const res = await api.applyLeechActions(plan.batch)
+        if (res.status !== 'success') {
+          setError(res.message || 'Leech 처리를 시작하지 못했습니다.')
+          return
+        }
+        setGenerationFeedback('Leech 처리 작업을 시작했습니다. 진행 상황은 오른쪽 아래 작업 창에서 볼 수 있습니다.')
+        void waitForJobThenRefresh()
+      }
+      setSelectedMap(new Map())
+      setChoices(new Map())
+      if (plan.promoteQueue.length > 0) setPromoteQueue(plan.promoteQueue)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Leech 처리 요청 실패')
+    } finally {
+      setIsApplying(false)
+    }
+  }
+
+  const isLeechMode = filterMode === 'leech'
+  const leechPlan = isLeechMode ? planActions(Array.from(selectedMap.values()), choices) : null
 
   const totalPages = Math.ceil(vocabData.total / limit) || 1
   const currentPage = Math.floor(offset / limit) + 1
@@ -504,8 +579,14 @@ export const LinkManagerPanel: React.FC<LinkManagerPanelProps> = ({
                 <th className="py-2.5 px-2 w-20 text-center">오답 (Lapse)</th>
                 <th className="py-2.5 px-2 w-20 text-center">난이도 (Ease)</th>
                 <th className="py-2.5 px-3 w-24 text-center">문장 연결</th>
-                <th className="py-2.5 px-3 w-24 text-center">리스크 진단</th>
-                <th className="py-2.5 px-3 w-24 text-center">청크 승격</th>
+                {isLeechMode ? (
+                  <th className="py-2.5 px-3 min-w-[200px]">처리 (기본값은 추천)</th>
+                ) : (
+                  <>
+                    <th className="py-2.5 px-3 w-24 text-center">리스크 진단</th>
+                    <th className="py-2.5 px-3 w-24 text-center">청크 승격</th>
+                  </>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-apple-border/60">
@@ -611,39 +692,62 @@ export const LinkManagerPanel: React.FC<LinkManagerPanelProps> = ({
                           {item.link_count}개
                         </span>
                       </td>
-                      <td className="py-2.5 px-3 text-center">
-                        {isLeech && isZero ? (
-                          <span className="text-[10px] font-medium text-apple-red bg-apple-red/10 px-2 py-0.5 rounded border border-apple-red/20">
-                            고위험 고립
-                          </span>
-                        ) : isZero ? (
-                          <span className="text-[10px] text-apple-orange font-medium bg-apple-orange/10 px-2 py-0.5 rounded border border-apple-orange/20">
-                            미연결
-                          </span>
-                        ) : isLeech ? (
-                          <span className="text-[10px] text-purple-400 font-medium bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20">
-                            반복 망각
-                          </span>
-                        ) : (
-                          <span className="text-[10px] text-apple-secondary font-mono">
-                            안정
-                          </span>
-                        )}
-                      </td>
-                      <td
-                        className="py-2.5 px-3 text-center"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => handleOpenChunkModal(item)}
-                          className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-md transition-colors shadow-sm"
-                          title="고빈도 청크로 1-클릭 승격"
+                      {isLeechMode ? (
+                        <td className="py-2 px-3" onClick={(e) => e.stopPropagation()}>
+                          <select
+                            value={choiceFor(item, choices)}
+                            onChange={(e) => setChoice(item.note_id, e.target.value as LeechAction)}
+                            className="w-full rounded-apple-sm border border-apple-border bg-apple-bg px-2 py-1 text-xs text-apple-text outline-none focus:border-apple-blue"
+                            title={LEECH_ACTIONS.find((a) => a.value === choiceFor(item, choices))?.hint}
+                          >
+                            {LEECH_ACTIONS.map((a) => (
+                              <option key={a.value} value={a.value}>
+                                {a.label}
+                                {item.suggestion?.action === a.value ? ' (추천)' : ''}
+                              </option>
+                            ))}
+                          </select>
+                          {item.suggestion && (
+                            <div className="mt-1 text-[10px] leading-snug text-apple-secondary">{item.suggestion.reason}</div>
+                          )}
+                        </td>
+                      ) : (
+                        <>
+                        <td className="py-2.5 px-3 text-center">
+                          {isLeech && isZero ? (
+                            <span className="text-[10px] font-medium text-apple-red bg-apple-red/10 px-2 py-0.5 rounded border border-apple-red/20">
+                              고위험 고립
+                            </span>
+                          ) : isZero ? (
+                            <span className="text-[10px] text-apple-orange font-medium bg-apple-orange/10 px-2 py-0.5 rounded border border-apple-orange/20">
+                              미연결
+                            </span>
+                          ) : isLeech ? (
+                            <span className="text-[10px] text-purple-400 font-medium bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20">
+                              반복 망각
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-apple-secondary font-mono">
+                              안정
+                            </span>
+                          )}
+                        </td>
+                        <td
+                          className="py-2.5 px-3 text-center"
+                          onClick={(e) => e.stopPropagation()}
                         >
-                          <Sparkles className="w-3 h-3 text-amber-400" />
-                          <span>청크 승격</span>
-                        </button>
-                      </td>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenChunkModal(item)}
+                            className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-md transition-colors shadow-sm"
+                            title="고빈도 청크로 1-클릭 승격"
+                          >
+                            <Sparkles className="w-3 h-3 text-amber-400" />
+                            <span>청크 승격</span>
+                          </button>
+                        </td>
+                        </>
+                      )}
                     </tr>
                   )
                 })
@@ -683,8 +787,33 @@ export const LinkManagerPanel: React.FC<LinkManagerPanelProps> = ({
         </div>
       </div>
 
-      {/* 5. Sticky Action Bar for Batch Sentence Generation */}
-      {selectedCount > 0 && (
+      {/* 5a. Leech 처리 적용 바 */}
+      {isLeechMode && selectedCount > 0 && leechPlan && (
+        <div className="flex flex-col justify-between gap-3 rounded-apple-sm border border-apple-blue/40 bg-apple-card p-3.5 shadow-apple-card sm:flex-row sm:items-center">
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="rounded bg-apple-blue/20 px-2 py-1 font-mono font-bold text-apple-blue">{selectedCount}개 선택</span>
+            {(['review_today', 'examples', 'promote', 'reset', 'skip'] as LeechAction[])
+              .filter((a) => leechPlan.counts[a] > 0)
+              .map((a) => (
+                <span key={a} className="rounded border border-apple-border px-2 py-0.5 text-apple-secondary">
+                  {actionLabel(a)} <span className="font-mono text-apple-text">{leechPlan.counts[a]}</span>
+                </span>
+              ))}
+          </div>
+          <button
+            type="button"
+            onClick={handleApplyLeech}
+            disabled={isApplying || leechPlan.batch.length + leechPlan.promoteQueue.length === 0}
+            className="inline-flex items-center gap-1.5 rounded-apple-sm bg-apple-blue px-4 py-2 text-xs font-semibold text-white hover:bg-apple-blueHover disabled:opacity-50"
+          >
+            {isApplying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+            선택한 처리 적용
+          </button>
+        </div>
+      )}
+
+      {/* 5b. Sticky Action Bar for Batch Sentence Generation */}
+      {!isLeechMode && selectedCount > 0 && (
         <div className="p-3.5 rounded-apple-sm bg-apple-card border border-apple-blue/40 shadow-apple-card flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fade-in">
           <div className="flex items-center gap-3">
             <div className="px-2 py-1 rounded bg-apple-blue/20 text-apple-blue font-mono font-bold text-xs">
@@ -727,7 +856,7 @@ export const LinkManagerPanel: React.FC<LinkManagerPanelProps> = ({
       {/* 6. Promote Chunk Modal */}
       <PromoteChunkModal
         isOpen={isChunkModalOpen}
-        onClose={() => setIsChunkModalOpen(false)}
+        onClose={closeChunkModal}
         targetItem={chunkModalItem}
         onPromoted={() => {
           fetchVocab()

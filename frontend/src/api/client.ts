@@ -9,6 +9,7 @@ import type {
   LinkVocabResponse,
   LinkVocabItem,
   BatchGenerateResult,
+  LeechAction,
 } from '../types/dashboard'
 import type { StatsOverview } from '../types/stats'
 
@@ -113,6 +114,12 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ words, generate_audio: generateAudio }),
     }),
+
+  // Leech batch actions (review_today / reset / examples) — runs as a background job
+  applyLeechActions: (
+    items: { note_id: number; word: string; meaning: string; action: LeechAction }[],
+  ): Promise<ActionResult> =>
+    request<ActionResult>('/leech/apply', { method: 'POST', body: JSON.stringify({ items }) }),
 
   // Corpus & Chunk Promotion
   getCorpusAuditStats: (): Promise<import('../types/corpus').CorpusAuditStats> =>

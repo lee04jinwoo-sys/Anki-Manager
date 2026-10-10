@@ -108,6 +108,8 @@ export interface LinkStats {
   leech_count?: number
 }
 
+export type LeechAction = 'review_today' | 'reset' | 'examples' | 'promote' | 'skip'
+
 export interface LinkVocabItem {
   note_id: number
   card_id?: number
@@ -118,6 +120,8 @@ export interface LinkVocabItem {
   lapses?: number
   ease?: number
   reps?: number
+  tier?: string
+  suggestion?: { action: LeechAction; reason: string }
 }
 
 export interface LinkVocabResponse {
