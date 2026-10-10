@@ -55,5 +55,19 @@ def run_batch_promote():
 
     logger.info(f"\n[+] Batch promotion completed! Success: {success_count}/{len(items)}, Failed: {fail_count}")
 
-if __name__ == "__main__":
+GUARD_MESSAGE = (
+    "이미 실행된 일회성 스크립트입니다. 다시 실행하면 대상 노트의 필드를 덮어쓰고 학습 이력을 초기화합니다.\n"
+    "정말 다시 실행하려면 --yes 를 붙이세요. (승격 전 상태는 data/backups/promote/ 에 저장됩니다)"
+)
+
+
+def main(argv: list[str]) -> int:
+    if "--yes" not in argv:
+        print(GUARD_MESSAGE)
+        return 1
     run_batch_promote()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
