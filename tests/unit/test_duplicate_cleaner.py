@@ -40,7 +40,7 @@ def fake(monkeypatch):
         monkeypatch.setattr(AnkiConnector, "invoke", staticmethod(f.invoke))
         monkeypatch.setattr(
             config, "DUPLICATE_CLEANUP_LIST",
-            [{"note_type": "English Vocabulary", "target_field": "단어"}],
+            [{"note_type": "English Vocabulary", "target_field": "단어", "case_sensitive": True}],
         )
         return f
     return make
@@ -61,8 +61,8 @@ def test_keeps_most_reviewed_and_suspends_rest(fake):
     assert tagged and tagged[0]["notes"] == [1]
 
 
-def test_html_and_case_variants_are_duplicates(fake):
-    f = fake([_note(1, "<b>Run</b>", [11]), _note(2, "run&nbsp;", [21])], {11: 3, 21: 0})
+def test_html_variants_are_duplicates(fake):
+    f = fake([_note(1, "<b>run</b>", [11]), _note(2, "run&nbsp;", [21])], {11: 3, 21: 0})
     cleaner.clean_duplicates()
     assert f.actions("suspend") == [{"cards": [21]}]
 
@@ -71,3 +71,22 @@ def test_no_duplicates_no_changes(fake):
     f = fake([_note(1, "run", [11]), _note(2, "walk", [21])], {})
     cleaner.clean_duplicates()
     assert f.actions("suspend") == [] and f.actions("addTags") == []
+
+
+def test_vocab_case_difference_is_not_duplicate(fake):
+    # 'cancer'(암) / 'Cancer'(게자리), 'stem' / 'STEM' 은 서로 다른 단어
+    f = fake([_note(1, "cancer", [11]), _note(2, "Cancer", [21]), _note(3, "stem", [31]), _note(4, "STEM", [41])], {})
+    cleaner.clean_duplicates()
+    assert f.actions("suspend") == []
+
+
+def test_sentence_case_difference_is_duplicate(fake, monkeypatch):
+    f = fake([], {})
+    f.notes = [
+        {"noteId": 1, "fields": {"문장": {"value": "Let&#x27;s Keep in touch."}}, "cards": [11]},
+        {"noteId": 2, "fields": {"문장": {"value": "Let's keep in touch."}}, "cards": [21]},
+    ]
+    f.reps = {11: 4, 21: 0}
+    monkeypatch.setattr(config, "DUPLICATE_CLEANUP_LIST", [{"note_type": "English Sentence", "target_field": "문장"}])
+    cleaner.clean_duplicates()
+    assert f.actions("suspend") == [{"cards": [21]}]

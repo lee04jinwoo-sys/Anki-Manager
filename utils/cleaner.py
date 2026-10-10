@@ -7,15 +7,16 @@ from integrations.anki_connect import AnkiConnector
 DUPLICATE_TAG = "dup::review"
 
 
-def _normalize(value: str) -> str:
+def _normalize(value: str, case_sensitive: bool = False) -> str:
     text = html.unescape(re.sub(r"<[^>]+>", "", value))
-    return re.sub(r"\s+", " ", text).strip().lower()
+    text = re.sub(r"\s+", " ", text).strip()
+    return text if case_sensitive else text.lower()
 
 
 def clean_duplicates():
     """중복 노트를 정리한다. 영구 삭제하지 않는다.
 
-    같은 값(HTML·공백·대소문자 무시)을 가진 노트 중 리뷰 수가 가장 많은 노트를 남기고,
+    같은 값(HTML·공백 무시, case_sensitive가 아니면 대소문자도 무시)을 가진 노트 중 리뷰 수가 가장 많은 노트를 남기고,
     나머지는 DUPLICATE_TAG 태그를 달아 카드를 일시정지한다. 확인 후 Anki에서 직접 지우면 된다.
     """
     if not getattr(config, "DUPLICATE_CLEANUP_LIST", None):
@@ -23,6 +24,7 @@ def clean_duplicates():
         return
     for target in config.DUPLICATE_CLEANUP_LIST:
         model, field = target.get("note_type"), target.get("target_field")
+        case_sensitive = target.get("case_sensitive", False)
         print(f"🔍 중복 체크 중: [{model}] ({field} 필드)")
         note_ids = AnkiConnector.invoke("findNotes", query=f'note:"{model}"')
         if not note_ids:
@@ -31,7 +33,7 @@ def clean_duplicates():
 
         groups: dict[str, list[dict]] = {}
         for note in notes_info:
-            key = _normalize(note["fields"].get(field, {}).get("value", ""))
+            key = _normalize(note["fields"].get(field, {}).get("value", ""), case_sensitive)
             if key:
                 groups.setdefault(key, []).append(note)
         dup_groups = [g for g in groups.values() if len(g) > 1]

@@ -97,7 +97,8 @@ AUDIO_ADDER_MAX_WORKERS = 5
 # --- Cleanup & Organizer Rules ---
 DUPLICATE_CLEANUP_LIST = [
     {"note_type": "English Grammar", "target_field": "문장"},
-    {"note_type": "English Vocabulary", "target_field": "단어"},
+    # 단어는 대소문자로 뜻이 갈린다 (cancer 암 / Cancer 게자리, stem / STEM)
+    {"note_type": "English Vocabulary", "target_field": "단어", "case_sensitive": True},
     {"note_type": "English Sentence", "target_field": "문장"}
 ]
 
