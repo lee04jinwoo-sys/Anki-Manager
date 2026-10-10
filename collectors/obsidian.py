@@ -59,11 +59,12 @@ class ObsidianManager:
 
         import re
         def normalize(text):
-            # 영문자/숫자만 남기고 소문자로 변환하여 비교 (AI에 의한 미세한 형식 변경 대응)
-            return re.sub(r'[^a-zA-Z0-9]', '', text).lower()
+            # 문자(한글 포함)/숫자만 남기고 소문자로 변환하여 비교 (AI에 의한 미세한 형식 변경 대응)
+            return re.sub(r'[\W_]+', '', text).lower()
 
-        proc_s_norm = [normalize(s) for s in processed_sentences]
-        proc_v_norm = [normalize(v) for v in processed_vocab]
+        # 빈 문자열은 비교 대상에서 뺀다 (기호만 있는 줄끼리 일치해 지워지는 것 방지)
+        proc_s_norm = {n for n in (normalize(s) for s in processed_sentences) if n}
+        proc_v_norm = {n for n in (normalize(v) for v in processed_vocab) if n}
 
         with open(self.file_path, 'r', encoding='utf-8') as f:
             lines = f.readlines()

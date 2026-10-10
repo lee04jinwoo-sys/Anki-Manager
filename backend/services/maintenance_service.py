@@ -47,7 +47,7 @@ STEP_CATALOG: list[StepInfo] = [
     StepInfo(id="audio", label="오디오 채우기", description="오디오가 없는 노트에 TTS를 생성합니다.", default=True),
     StepInfo(id="deck_move", label="규칙별 덱 이동", description="카드 타입 규칙에 따라 올바른 덱으로 이동합니다.", default=True),
     StepInfo(id="pos", label="품사 자동 입력", description="비어 있는 품사 필드를 NLTK로 채웁니다.", default=False),
-    StepInfo(id="duplicates", label="중복 정리", description="중복 노트를 정리합니다.", default=False),
+    StepInfo(id="duplicates", label="중복 정리", description="중복 노트 중 리뷰가 적은 쪽에 dup::review 태그를 달고 일시정지합니다 (삭제 안 함).", default=False),
 ]
 _LABELS: dict[StepId, str] = {s.id: s.label for s in STEP_CATALOG}
 

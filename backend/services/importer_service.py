@@ -1,12 +1,18 @@
 """Obsidian Inbox -> Anki import (the only import source kept)."""
 from __future__ import annotations
 
+import re
+
 from backend.schemas.importer import ObsidianCommitRequest
 from backend.schemas.jobs import ActionResult, Candidates, JobStatus
 from backend.services import maintenance_service
 from backend.services.jobs import jobs
 from collectors.obsidian import ObsidianManager
-from core.completer import run_note_completion
+from core.completer import normalize_vocab_placeholders, run_note_completion
+
+
+def _key(text: str) -> str:
+    return re.sub(r"[\W_]+", "", text).lower()
 
 
 def start_extract() -> ActionResult:
@@ -42,16 +48,24 @@ def start_commit(req: ObsidianCommitRequest) -> ActionResult:
             progress=20,
         )
         jobs.emit("AI 상세 보강(뜻, 예문, 품사, 번역) 및 Anki 카드 추가 중...", progress=30)
-        run_note_completion(
-            {"sentences": req.selected_sentences, "video_id": None, "segments": None},
+        # run_note_completion은 vocab_dicts의 단어를 제자리에서 정규화하므로 원문을 먼저 보관한다.
+        original_words = [v["단어"] for v in vocab_dicts]
+        _, done_sentences, done_vocab = run_note_completion(
+            {"sentences": list(req.selected_sentences), "video_id": None, "segments": None},
             {"vocab": vocab_dicts, "video_id": None, "segments": None},
         )
 
-        # 처리한 항목만 Inbox에서 제거한다 (선택하지 않은 항목은 보존).
+        # Anki에 실제로 등록(또는 이미 존재)된 항목만 Inbox에서 제거한다.
+        done_s = {_key(s) for s in done_sentences}
+        done_v = set(done_vocab)
+        removed_sentences = [s for s in req.selected_sentences if _key(s) in done_s]
+        removed_vocab = [w for w in original_words if normalize_vocab_placeholders(w) in done_v]
+        failed = (len(req.selected_sentences) - len(removed_sentences)) + (len(original_words) - len(removed_vocab))
+
         jobs.emit("Obsidian Inbox 정리 중...", progress=60)
-        ObsidianManager().remove_processed_items(
-            req.selected_sentences, [v["단어"] for v in vocab_dicts]
-        )
+        ObsidianManager().remove_processed_items(removed_sentences, removed_vocab)
+        if failed:
+            jobs.emit(f"{failed}개 항목은 등록되지 않아 Inbox에 남겨두었습니다.", level="warn")
 
         jobs.emit("오디오 생성 및 덱 정리 중...", progress=75)
         maintenance_service.run_steps_blocking(["audio", "deck_move"], base=75, span=20)
