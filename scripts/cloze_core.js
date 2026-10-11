@@ -32,7 +32,7 @@ var CLOZE_IRREGULAR_GROUPS = [
   "undergo undergoes undergoing underwent undergone", "undertake undertakes undertaking undertook undertaken",
   "overcome overcomes overcoming overcame", "withdraw withdraws withdrawing withdrew withdrawn",
   "withhold withholds withholding withheld", "uphold upholds upholding upheld",
-  "lay lays laying laid", "lie lies lying lay lain", "set sets setting", "cut cuts cutting",
+  "lay lays laying laid", "lie lies lying lay lain lied", "set sets setting", "cut cuts cutting",
   "let lets letting", "hit hits hitting", "sit sits sitting sat", "meet meets meeting met",
   "lead leads leading led", "build builds building built", "begin begins beginning began begun",
   "seek seeks seeking sought", "sell sells selling sold", "teach teaches teaching taught",
@@ -46,7 +46,9 @@ var CLOZE_IRREGULAR_GROUPS = [
   "overtake overtakes overtaking overtook overtaken", "prove proves proving proved proven",
   "quit quits quitting", "shed sheds shedding", "slay slays slaying slew slain", "sow sows sowing sowed sown",
   "stride strides striding strode stridden", "sweat sweats sweating", "tread treads treading trod trodden",
-  "understand understands understanding understood", "wind winds winding wound"
+  "understand understands understanding understood", "wind winds winding wound",
+  "fight fights fighting fought", "swell swells swelling swelled swollen",
+  "oversleep oversleeps oversleeping overslept", "sleep sleeps sleeping slept"
 ];
 var CLOZE_IRREGULARS = {};
 CLOZE_IRREGULAR_GROUPS.forEach(function (g) {
@@ -64,6 +66,10 @@ CLOZE_IRREGULAR_GROUPS.forEach(function (g) {
  *  - slots (A, A's, sb, sth, one's, V-ing): exposed in front; underlined only when
  *    they sit BETWEEN fixed words; leading/trailing slots are never part of the match
  *  - first non-stopword fixed token gets a first-letter hint
+ *  - strict match first; only if it fails, a loose match allows up to 2 extra words (no commas)
+ *    or "a lot of" between
+ *    fixed words ("made a good point"), an empty middle slot ("putting off the meeting"),
+ *    a missing article ("cracking jokes") and a missing leading be ("felt pressured to")
  *  - no partial matching: either the whole expression matches or the sentence is shown as-is
  */
 var CLOZE_STOP = /^(in|on|at|to|for|of|by|with|from|up|out|off|over|about|as|into|onto|upon|through|under|down|away|back|be|is|are|was|were|am|been|being|it|its|one)$/i;
@@ -117,10 +123,12 @@ function clozeEscape(s) {
   return s.replace(/[.*+?^$(){}|\[\]\\\/-]/g, "\\$&");
 }
 
-function clozeOnePattern(t) {
+function clozeOnePattern(t, loose) {
   var lower = t.toLowerCase();
   if (clozeIsArticle(lower)) return "(?:a|an|the|this|that|these|those|my|your|his|her|its|our|their|some|any)";
   if (/^(be|is|are|was|were|am|been|being)$/.test(lower)) return "(?:be|is|are|was|were|am|been|being|'m|'s|'re)";
+  // contractions only in the strict (adjacent) match: "I've been meaning to"
+  if (lower === "have") return loose ? "(?:have|has|having|had)" : "(?:have|has|having|had|'ve|'d)";
   if (CLOZE_IRREGULARS[lower]) return CLOZE_IRREGULARS[lower];
   var esc = clozeEscape(lower);
   if (lower === "be") return "(?:be|is|are|was|were|am|been|being|'m|'s|'re)";
@@ -134,37 +142,70 @@ function clozeOnePattern(t) {
   return esc + "(?:s|es|ed|ing|er|ers|ly|[bdgmnprt](?:ed|ing|er))?";
 }
 
-function clozeTokenPattern(text) {
-  return "(?:" + text.split("/").map(clozeOnePattern).join("|") + ")";
+function clozeTokenPattern(text, loose) {
+  return "(?:" + text.split("/").map(function (t) { return clozeOnePattern(t, loose); }).join("|") + ")";
 }
 
 var CLOZE_CACHE = {};
 
-function clozeBuild(word) {
-  if (CLOZE_CACHE[word]) return CLOZE_CACHE[word];
-  var toks = clozeParse(word);
-  var re = "";
-  var meta = [];
+function clozeRegex(toks, loose) {
+  // One separator group and one token group per fixed word, so match groups line up with
+  // meta: m[1 + 2j] is word j and m[2j] the text before it (undefined when optional and absent).
+  var seps = [], words = [];
   var pendingSlot = false;
   for (var i = 0; i < toks.length; i++) {
     var t = toks[i];
     if (t.slot) { pendingSlot = true; continue; }
-    if (meta.length > 0) {
-      re += pendingSlot ? "([,;]?\\s+(?:[^\\s.?!;]+\\s+){1,6}?)" : "([,;]?\\s+|-)";
+    if (words.length > 0) {
+      if (pendingSlot) {
+        // loose: the slot may be empty ("putting off the meeting", "bear in mind that")
+        seps.push(loose ? "([,;]?\\s+(?:[^\\s.?!;]+\\s+){0,8}?)" : "([,;]?\\s+(?:[^\\s.?!;]+\\s+){1,6}?)");
+      } else {
+        // loose: up to 2 extra words without commas ("made a good point"), or "a lot of"
+        seps.push(loose ? "([,;]?\\s+(?:a\\s+lot\\s+of\\s+|(?:[^\\s.?!;,]+\\s+){0,2}?)|-)" : "([,;]?\\s+|-)");
+      }
+    } else {
+      seps.push("");
     }
-    re += "(?:\\b|(?=')|(?<=')|(?<=\\w))(" + clozeTokenPattern(t.text) + ")\\b";
-    meta.push(t);
+    // loose: never start inside a word ("software" must not yield "are")
+    var start = loose ? "(?:\\b|(?='))" : "(?:\\b|(?=')|(?<=')|(?<=\\w))";
+    words.push({ text: t.text, re: start + "(" + clozeTokenPattern(t.text, loose) + ")\\b" });
     pendingSlot = false;
   }
-  var built = meta.length ? { rgx: new RegExp(re, "i"), meta: meta } : null;
+  var re = "";
+  var k = 0;
+  if (loose && words.length > 1 && /^(be|is|are|was|were|am)$/i.test(words[0].text)) {
+    // "be pressured to V" ~ "felt pressured to": be and the gap after it are optional together
+    re = "(?:" + words[0].re + seps[1] + ")?" + words[1].re;
+    k = 2;
+  }
+  for (; k < words.length; k++) {
+    if (loose && k > 0 && clozeIsArticle(words[k].text)) {
+      re += "(?:" + seps[k] + words[k].re + ")?";   // "crack a joke" ~ "cracking jokes"
+    } else {
+      re += seps[k] + words[k].re;
+    }
+  }
+  return new RegExp(re, "i");
+}
+
+function clozeBuild(word) {
+  if (CLOZE_CACHE[word]) return CLOZE_CACHE[word];
+  var toks = clozeParse(word);
+  var meta = toks.filter(function (t) { return !t.slot; });
+  // Strict first; the loose pattern is only a fallback, so strict matches never change.
+  var built = meta.length ? { rgx: clozeRegex(toks, false), loose: clozeRegex(toks, true), meta: meta } : null;
   CLOZE_CACHE[word] = built;
   return built;
 }
 
-function clozeMatch(sentence, word) {
+// mode: "strict", "loose" or undefined (strict, then loose)
+function clozeMatch(sentence, word, mode) {
   var b = clozeBuild(word);
   if (!b) return null;
-  var m = b.rgx.exec(sentence);
+  var m = mode === "loose" ? b.loose.exec(sentence)
+        : mode === "strict" ? b.rgx.exec(sentence)
+        : (b.rgx.exec(sentence) || b.loose.exec(sentence));
   if (!m) return null;
   return { m: m, meta: b.meta };
 }
@@ -186,8 +227,8 @@ function clozeMaskWord(w, hint) {
   return '<span class="cloze-blank">' + out + "</span>";
 }
 
-function clozeMask(sentence, word) {
-  var r = clozeMatch(sentence, word);
+function clozeMask(sentence, word, mode) {
+  var r = clozeMatch(sentence, word, mode);
   if (!r) return null;
   var m = r.m, meta = r.meta;
   var hintIdx = -1, firstNonArt = -1;
@@ -199,39 +240,52 @@ function clozeMask(sentence, word) {
   if (hintIdx < 0) hintIdx = firstNonArt;
   var out = sentence.slice(0, m.index);
   for (var j = 0; j < meta.length; j++) {
-    if (j > 0) out += m[2 * j];
+    if (j > 0 && m[2 * j] !== undefined) out += m[2 * j];
     var w = m[1 + 2 * j];
+    if (w === undefined) continue;   // optional word absent in the loose match
     out += clozeIsArticle(meta[j].text) ? w : clozeMaskWord(w, j === hintIdx);
   }
   return out + sentence.slice(m.index + m[0].length);
 }
 
-function clozeHighlight(sentence, word) {
-  var r = clozeMatch(sentence, word);
+function clozeHighlight(sentence, word, mode) {
+  var r = clozeMatch(sentence, word, mode);
   if (!r) return null;
   var m = r.m;
-  return sentence.slice(0, m.index) + '<span class="example-highlight">' + m[0] + "</span>" +
+  var lead = m[0].match(/^\s*/)[0];  // a loose match may start at the space before the first word
+  return sentence.slice(0, m.index) + lead + '<span class="example-highlight">' + m[0].slice(lead.length) + "</span>" +
          sentence.slice(m.index + m[0].length);
 }
 
+// A note uses the loose match only when none of its examples matches strictly, so notes that
+// already work are unaffected and unrelated extra examples are never force-matched.
+function clozeNoteMode(sentences, word) {
+  for (var i = 0; i < sentences.length; i++) {
+    if (clozeMatch(sentences[i], word, "strict")) return "strict";
+  }
+  return "loose";
+}
+
 function clozeFront(sentences, word) {
+  var mode = clozeNoteMode(sentences, word);
   var start = sentences.length > 1 ? Math.floor(Math.random() * sentences.length) : 0;
   for (var k = 0; k < sentences.length; k++) {
     var idx = (start + k) % sentences.length;
-    var html = clozeMask(sentences[idx], word);
+    var html = clozeMask(sentences[idx], word, mode);
     if (html) return { sentence: sentences[idx], html: html };
   }
   return { sentence: sentences[start], html: null };
 }
 
 function clozeBack(sentences, word, saved) {
+  var mode = clozeNoteMode(sentences, word);
   var order = [];
   if (saved && sentences.indexOf(saved) !== -1) order.push(saved);
   for (var i = 0; i < sentences.length; i++) {
     if (order.indexOf(sentences[i]) === -1) order.push(sentences[i]);
   }
   for (var k = 0; k < order.length; k++) {
-    var html = clozeHighlight(order[k], word);
+    var html = clozeHighlight(order[k], word, mode);
     if (html) return { sentence: order[k], html: html };
   }
   return { sentence: order[0], html: null };
@@ -241,6 +295,7 @@ if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     clozeNormalize: clozeNormalize, clozeSplitSentences: clozeSplitSentences,
     clozeParse: clozeParse, clozeMatch: clozeMatch, clozeMask: clozeMask,
-    clozeHighlight: clozeHighlight, clozeFront: clozeFront, clozeBack: clozeBack
+    clozeHighlight: clozeHighlight, clozeFront: clozeFront, clozeBack: clozeBack,
+    clozeNoteMode: clozeNoteMode
   };
 }

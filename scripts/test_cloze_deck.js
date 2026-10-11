@@ -6,7 +6,8 @@ for (const d of data) {
   const sents = core.clozeSplitSentences(d.sent);
   if (!sents.length) { noSent++; continue; }
   if (!core.clozeParse(d.word).length) { noWord++; fails.push({ nid: d.nid, word: d.word, why: "no fixed tokens", sent: sents[0] }); continue; }
-  const hits = sents.filter(s => core.clozeMask(s, d.word) !== null).length;
+  const mode = core.clozeNoteMode(sents, d.word);
+  const hits = sents.filter(s => core.clozeMask(s, d.word, mode) !== null).length;
   if (hits === sents.length) ok++;
   else fails.push({ nid: d.nid, word: d.word, why: hits === 0 ? "ALL_FAIL" : `partial ${hits}/${sents.length}`, sent: sents[0] });
 }
