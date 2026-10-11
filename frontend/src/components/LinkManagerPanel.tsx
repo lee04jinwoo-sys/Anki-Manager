@@ -39,7 +39,13 @@ interface LinkManagerPanelProps {
   onRefreshDashboard?: () => void
 }
 
-type FilterMode = 'leech' | 'zero' | 'low' | 'all'
+type FilterMode = 'leech' | 'treated' | 'zero' | 'low' | 'all'
+
+const RELAPSE_LAPSES = 4 // backend/services/leech_history.py 와 같은 값
+const dateOf = (ts: number) => {
+  const d = new Date(ts * 1000)
+  return `${d.getMonth() + 1}/${d.getDate()}`
+}
 
 export const LinkManagerPanel: React.FC<LinkManagerPanelProps> = ({
   onRefreshDashboard,
@@ -324,6 +330,7 @@ export const LinkManagerPanel: React.FC<LinkManagerPanelProps> = ({
   }
 
   const isLeechMode = filterMode === 'leech'
+  const isTreatedMode = filterMode === 'treated'
   const leechPlan = isLeechMode ? planActions(Array.from(selectedMap.values()), choices) : null
 
   const totalPages = Math.ceil(vocabData.total / limit) || 1
@@ -461,6 +468,21 @@ export const LinkManagerPanel: React.FC<LinkManagerPanelProps> = ({
             <button
               type="button"
               onClick={() => {
+                setFilterMode('treated')
+                setOffset(0)
+              }}
+              className={`px-2.5 py-1 rounded transition-colors ${
+                filterMode === 'treated'
+                  ? 'bg-apple-card font-semibold text-apple-text shadow-apple-subtle'
+                  : 'text-apple-secondary hover:text-apple-text'
+              }`}
+              title="처리한 단어와 처리 후 경과. 처리 후 4회 더 틀리면 만성 오답 목록으로 돌아갑니다"
+            >
+              처리됨
+            </button>
+            <button
+              type="button"
+              onClick={() => {
                 setFilterMode('zero')
                 setOffset(0)
               }}
@@ -574,7 +596,9 @@ export const LinkManagerPanel: React.FC<LinkManagerPanelProps> = ({
                 <th className="w-16 px-2 py-2 text-right font-normal">오답</th>
                 <th className="w-16 px-2 py-2 text-right font-normal">문장</th>
                 {isLeechMode && <th className="w-20 px-2 py-2 font-normal">빈도</th>}
-                <th className={`px-3 py-2 font-normal ${isLeechMode ? 'w-[260px]' : 'w-28 text-right'}`}>{isLeechMode ? '처리' : ''}</th>
+                <th className={`px-3 py-2 font-normal ${isLeechMode ? 'w-[260px]' : isTreatedMode ? 'w-[220px]' : 'w-28 text-right'}`}>
+                  {isLeechMode ? '처리' : isTreatedMode ? '처리 · 처리 후 오답' : ''}
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -605,7 +629,14 @@ export const LinkManagerPanel: React.FC<LinkManagerPanelProps> = ({
                         {isChecked ? <CheckSquare className="mx-auto h-4 w-4 text-apple-blue" /> : <Square className="mx-auto h-4 w-4" />}
                       </td>
                       <td className="max-w-0 px-3 py-2">
-                        <div className="truncate text-[13px] font-medium text-apple-text">{item.word}</div>
+                        <div className="truncate text-[13px] font-medium text-apple-text">
+                          {item.word}
+                          {isLeechMode && item.treated?.relapsed && (
+                            <span className="ml-2 text-[10px] font-normal text-apple-orange" title={`${dateOf(item.treated.treated_at)} ${actionLabel(item.treated.action)} 후 ${item.treated.lapses_since}회 오답`}>
+                              재발 · 처리 후 {item.treated.lapses_since}회 오답
+                            </span>
+                          )}
+                        </div>
                         <div className="truncate text-[11px] text-apple-secondary">
                           {item.pos && <span className="mr-1.5 opacity-70">{item.pos}</span>}
                           {item.meaning}
@@ -639,6 +670,15 @@ export const LinkManagerPanel: React.FC<LinkManagerPanelProps> = ({
                               {item.suggestion.reason}
                             </div>
                           )}
+                        </td>
+                      ) : isTreatedMode && item.treated ? (
+                        <td className="px-3 py-2">
+                          <div className="text-xs text-apple-text">
+                            {actionLabel(item.treated.action)} <span className="text-apple-secondary">· {dateOf(item.treated.treated_at)}</span>
+                          </div>
+                          <div className={`text-[11px] ${item.treated.relapsed ? 'text-apple-orange' : 'text-apple-secondary'}`}>
+                            처리 후 오답 {item.treated.lapses_since}/{RELAPSE_LAPSES}회{item.treated.relapsed ? ' · 재발' : ''}
+                          </div>
                         </td>
                       ) : (
                         <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>

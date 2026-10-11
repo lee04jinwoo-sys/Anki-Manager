@@ -122,6 +122,8 @@ export interface LinkVocabItem {
   reps?: number
   tier?: string
   suggestion?: { action: LeechAction; reason: string }
+  /** 처리 기록 (처리한 단어만). relapsed = 처리 후 오답이 재발 기준 이상 */
+  treated?: { action: LeechAction; treated_at: number; lapses_at: number; lapses_since: number; relapsed: boolean } | null
 }
 
 export interface LinkVocabResponse {

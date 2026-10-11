@@ -502,6 +502,11 @@ class CorpusService:
             except Exception as link_err:
                 logger.warning(f"LinkManager indexing failed for note {req.note_id}: {link_err}")
 
+            from backend.services import leech_history
+            leech_history.record([{
+                "note_id": req.note_id, "word": req.new_chunk, "action": "promote",
+                "lapses_at": 0 if req.reset_to_new else max((c.get("lapses", 0) for c in cards_info or []), default=0),
+            }])
             LinkManager.invalidate_leech_cache()
             return PromoteChunkResponse(
                 success=True,

@@ -445,6 +445,18 @@ class LinkManager:
                     "findNotes",
                     query=f'note:"{MODEL_VOCAB}" (prop:ease<=1.3 OR prop:lapses>=4) -is:suspended'
                 ) or []
+                # 처리했고 아직 재발하지 않은 단어는 뺀다 (목록과 같은 기준)
+                from backend.services import leech_history
+                treated = leech_history.get_all()
+                pending = [n for n in leech_notes if n in treated]
+                if pending:
+                    notes = AnkiConnector.invoke("notesInfo", notes=pending) or []
+                    card_ids = [c for n in notes if n for c in n.get("cards", [])]
+                    max_lapses: Dict[int, int] = {}
+                    for c in AnkiConnector.invoke("cardsInfo", cards=card_ids) or []:
+                        max_lapses[c["note"]] = max(max_lapses.get(c["note"], 0), c.get("lapses", 0))
+                    hidden = {n for n in pending if not leech_history.status(treated[n], max_lapses.get(n, 0))["relapsed"]}
+                    leech_notes = [n for n in leech_notes if n not in hidden]
                 leech_count = len(leech_notes)
             except Exception:
                 pass
@@ -468,6 +480,9 @@ class LinkManager:
     ) -> Dict[str, Any]:
         init_db()
 
+        if filter_mode == "treated":
+            return cls._treated_list(limit, offset, search)
+
         # Handle leech filter mode
         if filter_mode == "leech":
             try:
@@ -490,6 +505,22 @@ class LinkManager:
                             worst_by_note[nid] = c
                     ranked = sorted(worst_by_note.values(), key=lambda c: (-c.get("lapses", 0), c.get("factor", 0)))
                     _leech_cache[anki_q] = (time.time(), ranked)
+
+                # 처리한 단어는 숨기고, 처리 후 오답이 기준 이상 늘었으면 '재발'로 남긴다
+                from backend.services import leech_history
+                treated = leech_history.get_all()
+                treated_status: Dict[int, Dict[str, Any]] = {}
+                visible = []
+                for c in ranked:
+                    row = treated.get(c["note"])
+                    if row is None:
+                        visible.append(c)
+                        continue
+                    st = leech_history.status(row, c.get("lapses", 0))
+                    if st["relapsed"]:
+                        treated_status[c["note"]] = st
+                        visible.append(c)
+                ranked = visible
                 total_items = len(ranked)
                 cards_info = ranked[offset:offset + limit]
                 note_ids = [c["note"] for c in cards_info]
@@ -515,6 +546,7 @@ class LinkManager:
                     ease_val = round(c.get("factor", 1300) / 10.0, 1)
 
                     items.append({
+                        "treated": treated_status.get(nid),
                         "note_id": nid,
                         "card_id": c.get("cardId"),
                         "word": clean_text(word),
@@ -570,6 +602,42 @@ class LinkManager:
                 "offset": offset,
                 "items": items
             }
+
+    @classmethod
+    def _treated_list(cls, limit: int, offset: int, search: Optional[str]) -> Dict[str, Any]:
+        """처리한 단어 목록: 처리 방법·시각과 처리 후 오답 수 (최근 처리 순)."""
+        from backend.services import leech_history
+        rows = sorted(leech_history.get_all().values(), key=lambda r: -r["treated_at"])
+        if search:
+            rows = [r for r in rows if search.lower() in (r.get("word") or "").lower()]
+        page = rows[offset:offset + limit]
+        note_ids = [r["note_id"] for r in page]
+        notes = {n["noteId"]: n for n in (AnkiConnector.invoke("notesInfo", notes=note_ids) if note_ids else []) or [] if n}
+        card_ids = [c for n in notes.values() for c in n.get("cards", [])]
+        cards = AnkiConnector.invoke("cardsInfo", cards=card_ids) if card_ids else []
+        max_lapses: Dict[int, int] = {}
+        for c in cards or []:
+            max_lapses[c["note"]] = max(max_lapses.get(c["note"], 0), c.get("lapses", 0))
+        with get_db_connection() as conn:
+            placeholders = ",".join("?" * len(note_ids)) or "0"
+            cache = {r["note_id"]: dict(r) for r in conn.execute(
+                f"SELECT note_id, word, meaning, pos, link_count FROM vocab_cache WHERE note_id IN ({placeholders})", note_ids)}
+        items = []
+        for r in page:
+            nid = r["note_id"]
+            fields = notes.get(nid, {}).get("fields", {})
+            cached = cache.get(nid, {})
+            lapses = max_lapses.get(nid, 0)
+            items.append({
+                "note_id": nid,
+                "word": clean_text(fields.get("단어", {}).get("value", "")) or r.get("word", ""),
+                "meaning": clean_text(fields.get("뜻", {}).get("value", "")) or cached.get("meaning", ""),
+                "pos": clean_text(fields.get("품사", {}).get("value", "")) or cached.get("pos", ""),
+                "link_count": cached.get("link_count", 0),
+                "lapses": lapses,
+                "treated": leech_history.status(r, lapses),
+            })
+        return {"total": len(rows), "limit": limit, "offset": offset, "items": items}
 
     @classmethod
     def get_linked_sentences_for_vocab(cls, word: str) -> List[Dict[str, Any]]:

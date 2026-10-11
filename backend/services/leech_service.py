@@ -19,6 +19,7 @@ from typing import Any, Literal
 
 from core.batch_generator import BatchSentenceGenerator
 from core.link_manager import LinkManager
+from backend.services import leech_history
 from integrations.anki_connect import AnkiConnector
 
 Action = Literal["review_today", "reset", "examples", "promote", "skip"]
@@ -109,7 +110,15 @@ def _apply(items, emit, check_cancel) -> dict[str, int]:
         by_action[it["action"]].append(it)
 
     sched_items = by_action["review_today"] + by_action["reset"]
-    cards = _cards_by_note([it["note_id"] for it in sched_items])
+    treated_items = sched_items + by_action["examples"]
+    cards = _cards_by_note([it["note_id"] for it in treated_items])
+    # 처리 기록용: 처리 시점의 노트별 최대 오답 수
+    note_of = {c: it["note_id"] for it in treated_items for c in cards.get(it["note_id"], [])}
+    lapses_at: dict[int, int] = {}
+    for c in (AnkiConnector.invoke("cardsInfo", cards=list(note_of)) if note_of else []) or []:
+        nid = note_of.get(c["cardId"])
+        if nid is not None:
+            lapses_at[nid] = max(lapses_at.get(nid, 0), c.get("lapses", 0))
 
     # 1. 스케줄을 바꾸기 전에 노트의 모든 카드 상태를 백업한다. 실패하면 아무것도 바꾸지 않는다.
     leech_cards: set[int] = set()
@@ -141,6 +150,10 @@ def _apply(items, emit, check_cancel) -> dict[str, int]:
         created = int(res.get("created_count", 0))
         emit(f"예문 추가: 문장 {created}개 생성", 90)
 
+    leech_history.record([
+        {"note_id": it["note_id"], "word": it["word"], "action": it["action"], "lapses_at": lapses_at.get(it["note_id"], 0)}
+        for it in treated_items
+    ])
     return {
         "review_today": len(by_action["review_today"]),
         "reset": len(by_action["reset"]),
