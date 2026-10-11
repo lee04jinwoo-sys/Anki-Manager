@@ -1,0 +1,9 @@
+[Unit]
+Description=Anki morning brief at 08:00 Toronto time
+
+[Timer]
+OnCalendar=*-*-* 08:00:00 America/Toronto
+Unit=anki-brief@morning.service
+
+[Install]
+WantedBy=timers.target

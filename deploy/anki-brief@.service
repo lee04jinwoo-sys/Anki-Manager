@@ -1,0 +1,14 @@
+[Unit]
+Description=Anki %i brief on Telegram (morning brief / evening reminder)
+Wants=anki-manager.service
+After=anki-manager.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/anki-manager
+EnvironmentFile=/home/ubuntu/anki-manager/.env.telegram
+EnvironmentFile=/home/ubuntu/anki-manager/telegram_chat.env
+ExecStart=/home/ubuntu/anki-manager/.venv/bin/python -m integrations.daily_brief %i
+TimeoutStartSec=600
+Nice=10
