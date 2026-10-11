@@ -39,6 +39,9 @@ AUDIT_JSON_PATH = DATA_DIR / "vocab_corpus_audit.json"
 PROMOTE_BACKUP_DIR = DATA_DIR / "backups" / "promote"
 LLM_CACHE_PATH = DATA_DIR / "llm_cache.db"
 COLLOCATION_CACHE_DAYS = 90
+# 프롬프트를 바꾸면 올린다 → 이전 프롬프트로 만든 저장 후보는 쓰지 않는다
+# v2: explanation 한국어 명시 (flash-lite가 영어로 쓰는 경우가 있었음)
+COLLOCATION_PROMPT_VERSION = 2
 
 lemmatizer = WordNetLemmatizer()
 
@@ -219,7 +222,12 @@ def _cache_conn() -> sqlite3.Connection:
     return conn
 
 
+def _cache_key(model: str) -> str:
+    return f"{model}|p{COLLOCATION_PROMPT_VERSION}"
+
+
 def _cache_get(word: str, model: str) -> Optional[CollocationResponse]:
+    model = _cache_key(model)
     with _cache_conn() as conn:
         row = conn.execute("SELECT created, payload FROM collocations WHERE word = ? AND model = ?", (word.lower(), model)).fetchone()
     if not row or time.time() - row[0] > COLLOCATION_CACHE_DAYS * 86400:
@@ -230,6 +238,7 @@ def _cache_get(word: str, model: str) -> Optional[CollocationResponse]:
 
 
 def _cache_put(word: str, model: str, res: CollocationResponse) -> None:
+    model = _cache_key(model)
     with _cache_conn() as conn:
         conn.execute(
             "INSERT OR REPLACE INTO collocations (word, model, created, payload) VALUES (?, ?, ?, ?)",
@@ -300,7 +309,7 @@ class CorpusService:
         [지침]:
         1. 단순 사전식 단어가 아니라, 전치사나 목적어 등이 결합된 자연스러운 덩어리 표현(Chunk)이어야 합니다. (예: beg -> beg for mercy, beg the question)
         2. 다른 동의어와의 간섭이 적고 명확한 인출 앵커가 있는 표현이어야 합니다.
-        3. 각 표현에 대해 실전 예문 2개와 자연스러운 한글 번역, 그리고 뉘앙스 해설을 작성하세요.
+        3. 각 표현에 대해 실전 예문 2개와 자연스러운 한글 번역, 그리고 뉘앙스 해설을 작성하세요. 예문만 영어이고, meaning·trans·explanation은 모두 한국어로 씁니다.
         4. 목적어나 대상이 들어가는 자리에는 누구나 직관적으로 아는 'A', 'B' 플레이스홀더를 사용하거나, 가장 대표적인 목적어를 직접 결합하세요. (예: dispose of A, hoard supplies)
         5. 'chunk' 필드에는 괄호 설명(예: '(e.g., ...)')을 절대 포함하지 말고, 카드의 단어 표제어로 바로 쓸 수 있는 깔끔한 영문 표현만 작성하세요.
         6. 'pos' 필드에는 무조건 idiom을 쓰지 말고, 해당 청크가 문장에서 수행하는 실전 기능 품사('v', 'n', 'adj', 'adv', 'idiom' 중 하나)를 정확히 명시하세요. (예: beg for mercy -> 'v', adverse effects -> 'n', lenient with A -> 'adj', without a doubt -> 'adv')
@@ -316,7 +325,7 @@ class CorpusService:
                     "trans_1": "예문 1 한글 번역",
                     "example_2": "예문 2",
                     "trans_2": "예문 2 한글 번역",
-                    "explanation": "원어민 뉘앙스 및 쓰임새 설명"
+                    "explanation": "원어민 뉘앙스 및 쓰임새 설명 (반드시 한국어로)"
                 }}
             ]
         }}

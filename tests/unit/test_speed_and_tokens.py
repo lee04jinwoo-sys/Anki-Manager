@@ -124,3 +124,30 @@ def test_build_regex_compiles_each_word_once(monkeypatch):
         for w in words:
             PatternMatcher.build_regex(w)
     assert count["n"] == 600
+
+
+def test_prompt_requires_korean_explanation(gemini, monkeypatch):
+    seen = []
+
+    class SpyClient:
+        def __init__(self, api_key):
+            self.models = self
+
+        def generate_content(self, model, contents, config):
+            seen.append(contents)
+
+            class R:
+                text = json.dumps(CANDS)
+            return R()
+
+    monkeypatch.setattr(cs.genai, "Client", SpyClient)
+    cs.CorpusService.get_collocations("mitosis")
+    assert "explanation" in seen[0] and "한국어" in seen[0].split("explanation", 1)[1][:200]
+
+
+def test_cache_from_older_prompt_version_is_ignored(gemini, monkeypatch):
+    calls, _ = gemini
+    cs.CorpusService.get_collocations("lurk")
+    monkeypatch.setattr(cs, "COLLOCATION_PROMPT_VERSION", cs.COLLOCATION_PROMPT_VERSION + 1)
+    cs.CorpusService.get_collocations("lurk")
+    assert len(calls) == 2
