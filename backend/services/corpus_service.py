@@ -194,6 +194,16 @@ def fetch_google_books_ngram_frequencies(chunks: List[str]) -> Dict[str, float]:
     return freq_map
 
 
+def format_promote_examples(example_1: str, example_2: str) -> str:
+    """예문 필드 형식: 영어 예문만 ' ||| '로 구분한다.
+
+    번역·번호·HTML을 섞으면 빈칸 엔진(scripts/cloze_core.js)이 전체를 한 문장으로 다뤄
+    카드 앞면에 번역과 다음 예문까지 노출된다. 번역은 승격 시 문장 카드로 따로 들어간다.
+    """
+    examples = [e.strip() for e in (example_1, example_2) if e and e.strip()]
+    return " ||| ".join(examples)
+
+
 def _write_promote_backup(req: PromoteChunkRequest, note_info: Dict[str, Any], cards_info: List[Dict[str, Any]]) -> Path:
     PROMOTE_BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime("%Y%m%d_%H%M%S")
@@ -423,13 +433,8 @@ class CorpusService:
             # 2. Generate gTTS Audio for new chunk
             sound_tag, _ = AnkiTTSFiller.generate_gtts(req.new_chunk)
 
-            # 3. Format Examples HTML
-            examples_html = (
-                f"1. {req.example_1}<br>"
-                f"<span style=\"color:#888;font-size:0.9em;\">{req.trans_1}</span><br><br>"
-                f"2. {req.example_2}<br>"
-                f"<span style=\"color:#888;font-size:0.9em;\">{req.trans_2}</span>"
-            )
+            # 3. Examples: plain English joined by " ||| " (translations go to the sentence cards)
+            examples_html = format_promote_examples(req.example_1, req.example_2)
 
             # 4. Update Note Fields (Strict Zero-Synonym Rule)
             update_fields = {
