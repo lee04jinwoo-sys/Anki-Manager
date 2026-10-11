@@ -21,6 +21,8 @@ ENGLISH_DECKS = [
     (f"{ENGLISH_PARENT}::Grammar", "Grammar"),
 ]
 MATURE_IVL = 21
+FORECAST_DAYS = 180  # 향후 복습량: 오늘 포함 180일 (일별). 화면에서 주 단위로 묶어 본다
+RETENTION_WEEKS = 52  # 주간 정답률: 1년
 DEFAULT_ROLLOVER = 4
 LEECH_QUERY = "(prop:ease<=1.3 OR prop:lapses>=4) -is:suspended"
 
@@ -181,7 +183,7 @@ def get_overview(now: float | None = None) -> dict[str, Any]:
             f"{q} prop:due=1 -is:suspended",
         ]
     forecast_queries = [f'deck:"{ENGLISH_PARENT}" is:due -is:suspended'] + [
-        f'deck:"{ENGLISH_PARENT}" prop:due={n} -is:suspended' for n in range(1, 14)
+        f'deck:"{ENGLISH_PARENT}" prop:due={n} -is:suspended' for n in range(1, FORECAST_DAYS)
     ]
     counts = _multi_count(deck_queries + forecast_queries)
     deck_counts, forecast_counts = counts[: len(deck_queries)], counts[len(deck_queries):]
@@ -223,7 +225,7 @@ def get_overview(now: float | None = None) -> dict[str, Any]:
             "avg_minutes_30d": round(sum(d["minutes"] for d in last30) / 30, 1),
         },
         "retention_30d": retention(eng_30),
-        "weekly_retention": weekly_retention(eng_all, rollover, today, weeks=12),
+        "weekly_retention": weekly_retention(eng_all, rollover, today, weeks=RETENTION_WEEKS),
         "forecast": [
             {"date": (today + dt.timedelta(days=n)).isoformat(), "due": c} for n, c in enumerate(forecast_counts)
         ],

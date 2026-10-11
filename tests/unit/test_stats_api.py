@@ -53,7 +53,7 @@ def test_overview_shape_and_values(client):
     assert d["habit"]["current"] == 3          # 오늘·어제·그제(일본어) 연속
     assert d["retention_30d"]["mature"] == {"reviews": 2, "passed": 1, "rate": 50.0}
     assert d["retention_30d"]["young"]["rate"] == 100.0
-    assert len(d["heatmap"]) == 365 and len(d["forecast"]) == 14 and len(d["weekly_retention"]) == 12
+    assert len(d["heatmap"]) == 365 and len(d["forecast"]) == 180 and len(d["weekly_retention"]) == 52
     assert [x["label"] for x in d["decks"]] == ["Vocabulary", "Sentence", "Grammar"]
     assert d["decks"][0]["composition"]["new"] == 2 and d["decks"][0]["reviewed_today"] == 1
     assert d["desired_retention"] == 90.0
