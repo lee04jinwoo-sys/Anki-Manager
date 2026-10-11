@@ -14,7 +14,7 @@ def _block_real_anki(monkeypatch):
     def _refuse(*args, **kwargs):
         raise AssertionError("unit test attempted a real AnkiConnect HTTP call")
 
-    monkeypatch.setattr(anki_connect._SESSION, "post", _refuse)
+    monkeypatch.setattr(anki_connect, "_post", _refuse)
 
 
 @pytest.fixture(autouse=True)

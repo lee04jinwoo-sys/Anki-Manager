@@ -2,16 +2,23 @@ import requests
 import os
 from config import ANKI_URL
 
-# AnkiConnect는 항상 로컬(localhost) 통신이므로 http_proxy 등 환경변수 프록시를 무시한다.
-_SESSION = requests.Session()
-_SESSION.trust_env = False
 _TIMEOUT_SEC = 60
+
+
+def _post(payload):
+    # 요청마다 새 연결을 쓴다. AnkiConnect는 응답 뒤 연결을 닫는데, SSH 터널을 거치면
+    # 클라이언트가 이를 모르고 재사용하다 두 번에 한 번 끊긴다. 재시도는 addNote 중복 위험이 있어 쓰지 않는다.
+    # AnkiConnect는 localhost(또는 터널)로만 붙으므로 http_proxy 등 환경변수 프록시를 무시한다.
+    with requests.Session() as session:
+        session.trust_env = False
+        return session.post(ANKI_URL, json=payload, timeout=_TIMEOUT_SEC)
+
 
 class AnkiConnector:
     @staticmethod
     def invoke(action, **params):
         try:
-            response = _SESSION.post(ANKI_URL, json={"action": action, "version": 6, "params": params}, timeout=_TIMEOUT_SEC).json()
+            response = _post({"action": action, "version": 6, "params": params}).json()
             if 'error' in response and response['error']:
                 # 중복 에러는 호출부에서 처리할 수 있도록 에러 메시지 그대로 유지
                 raise Exception(response['error'])
