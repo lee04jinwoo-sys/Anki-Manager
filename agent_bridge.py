@@ -121,27 +121,36 @@ def bridge_add_items(items, enrich=True):
         # 중복 정리는 컬렉션 전체를 건드리므로 여기서 자동 실행하지 않는다 (웹 UI '노트 정리'에서 명시적으로 실행).
         print("🧹 Organizing cards...")
         run_organizer()
-        
+
+        # 휴대폰에 바로 보이도록 AnkiWeb과 동기화한다 (실패하면 텔레그램 알림, 전체 동기화는 강제하지 않음).
+        from integrations import anki_sync
+        print("🔄 Syncing with AnkiWeb...")
+        anki_sync.sync_and_report(anki_sync.anki_connect_sync, anki_sync.telegram_notifier())
+
         print("✨ All tasks completed successfully.")
 
-if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        try:
-            # Check if first arg is a file or a JSON string
-            if os.path.isfile(sys.argv[1]):
-                with open(sys.argv[1], 'r') as f:
-                    data = json.load(f)
-            else:
-                data = json.loads(sys.argv[1])
-            
-            # Check for 'enrich' flag in second arg
-            enrich_flag = True
-            if len(sys.argv) > 2 and sys.argv[2].lower() == 'false':
-                enrich_flag = False
-                
-            bridge_add_items(data, enrich=enrich_flag)
-        except Exception as e:
-            print(f"❌ Execution Error: {e}")
-    else:
-        print("Usage: python agent_bridge.py '<json_data>' [enrich_boolean]")
+def main(argv):
+    if len(argv) < 2:
+        print("Usage: python agent_bridge.py '<json_data>' | <file> | - [enrich_boolean]")
         print("Example: python agent_bridge.py '[{\"model\": \"Sentence\", \"fields\": {\"문장\": \"I am a student.\"}}]'")
+        print("서버 실행: ssh oracle-quant 'cd ~/anki-manager && .venv/bin/python agent_bridge.py -' < items.json")
+        return
+    try:
+        source = argv[1]
+        # '-'는 표준입력. SSH로 서버에서 실행할 때 따옴표가 깨지지 않게 한다.
+        if source == "-":
+            data = json.load(sys.stdin)
+        elif os.path.isfile(source):
+            with open(source, 'r') as f:
+                data = json.load(f)
+        else:
+            data = json.loads(source)
+
+        enrich_flag = not (len(argv) > 2 and argv[2].lower() == 'false')
+        bridge_add_items(data, enrich=enrich_flag)
+    except Exception as e:
+        print(f"❌ Execution Error: {e}")
+
+
+if __name__ == "__main__":
+    main(sys.argv)

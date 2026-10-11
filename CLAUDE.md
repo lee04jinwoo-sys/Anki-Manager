@@ -5,7 +5,13 @@
 ## 🛠 안키 자동화 도구 (Agent Bridge)
 - **도구 위치:** `agent_bridge.py`
 - **목적:** 대화 중 발생한 학습 콘텐츠(문장, 단어, 문법)를 안키에 자동으로 등록하고 오디오를 생성합니다.
-- **실행 방식:** `.venv/bin/python agent_bridge.py '<json_data>'`
+- **실행 방식 (2026-10-11부터 서버에서):** JSON을 표준입력으로 넘긴다.
+  ```bash
+  ssh oracle-quant 'cd ~/anki-manager && .venv/bin/python agent_bridge.py -' <<'JSON'
+  [{"model": "Vocab", "fields": {"단어": "groundbreaking"}}]
+  JSON
+  ```
+  서버 Anki(`anki.service`)에 넣고, 끝나면 AnkiWeb과 동기화한다. Mac Anki가 꺼져 있어도 된다. Mac에서 `.venv/bin/python agent_bridge.py '<json_data>'`로 돌리면 Mac Anki에 들어간다 (Mac Anki를 켜야 함).
 
 ## 📋 카드 작성 규칙
 카드를 보강(Enrichment)할 때는 `config.py`의 `NOTE_COMPLETOR_SYS_INSTRUCT`에 정의된 규칙을 엄격히 따릅니다.

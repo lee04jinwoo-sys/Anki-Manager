@@ -24,3 +24,6 @@ def _isolate_local_dbs(monkeypatch, tmp_path):
 
     monkeypatch.setattr(leech_history, "DB_PATH", tmp_path / "leech_treatments.db")
     monkeypatch.setattr(corpus_service, "LLM_CACHE_PATH", tmp_path / "llm_cache.db")
+
+    from integrations import anki_sync
+    monkeypatch.setattr(anki_sync, "STATE_PATH", tmp_path / "sync_state.json")

@@ -50,8 +50,9 @@ def _safe_notify(notify, text):
         logger.warning("동기화 알림 전송 실패: %s", e)
 
 
-def sync_and_report(sync, notify, state_path=STATE_PATH):
+def sync_and_report(sync, notify, state_path=None):
     """동기화를 한 번 실행한다. 성공하면 True."""
+    state_path = state_path or STATE_PATH  # 호출 시점에 읽는다 (테스트가 경로를 바꿔 끼울 수 있게)
     state = _load_state(state_path)
     last_error = state.get("last_error")
     try:
