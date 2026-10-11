@@ -24,7 +24,7 @@ def test_noun_is_not_promoted():
 
 def test_phrase_is_not_promoted_even_if_common():
     s = ls.suggest_action(word="come over", lapses=18, link_count=4, tier="freq::tier1_essential")
-    assert s["action"] == "review_today"
+    assert s["action"] != "promote"
 
 
 def test_few_linked_sentences_suggests_examples():
@@ -38,10 +38,16 @@ def test_rare_specialized_word_gets_examples_never_suspend():
     assert "suspend" not in ls.ACTIONS
 
 
-def test_well_linked_word_suggests_review_today():
-    s = ls.suggest_action(word="go over A", lapses=13, link_count=5, tier="freq::tier1_essential")
+def test_well_linked_word_that_keeps_failing_suggests_reset():
+    # come over: 문장 5개로 문맥은 충분한데 18회 오답 → 처음부터 다시
+    s = ls.suggest_action(word="come over", lapses=18, link_count=5, tier="freq::tier1_essential")
+    assert s["action"] == "reset"
+    assert "18회" in s["reason"]
+
+
+def test_well_linked_word_with_few_lapses_suggests_review_today():
+    s = ls.suggest_action(word="go over A", lapses=5, link_count=5, tier="freq::tier1_essential")
     assert s["action"] == "review_today"
-    assert s["reason"]
 
 
 # ---- 실행 ---------------------------------------------------------------
@@ -57,7 +63,10 @@ def anki(monkeypatch, tmp_path):
         if action == "notesInfo":
             return [{"noteId": n, "cards": CARDS[n]} for n in p["notes"]]
         if action == "cardsInfo":
-            return [{"cardId": c, "interval": 30, "due": 900, "factor": 1300, "reps": 20, "lapses": 9,
+            # 12, 22 는 멀쩡한 카드 (간격 190일, 오답 2회) → 건드리면 안 된다
+            healthy = {12, 22}
+            return [{"cardId": c, "interval": 190 if c in healthy else 30, "due": 900,
+                     "factor": 2100 if c in healthy else 1300, "reps": 20, "lapses": 2 if c in healthy else 9,
                      "type": 2, "queue": 2, "left": 0, "deckName": "V", "mod": 1} for c in p["cards"]]
         if action in ("setDueDate", "forgetCards"):
             return True
@@ -89,8 +98,9 @@ def test_apply_runs_each_action_on_the_right_cards(anki):
     calls, generated, _ = anki
     summary = ls.apply_actions(_items())
     actions = {a: p for a, p in calls if a in ("setDueDate", "forgetCards")}
-    assert actions["setDueDate"] == {"cards": [11, 12], "days": "0"}
-    assert actions["forgetCards"] == {"cards": [21, 22]}
+    # 노트의 카드 중 Leech 카드만 (멀쩡한 카드 12, 22 는 제외)
+    assert actions["setDueDate"] == {"cards": [11], "days": "0"}
+    assert actions["forgetCards"] == {"cards": [21]}
     assert [g["note_id"] for g in generated] == [3]
     assert summary == {"review_today": 1, "reset": 1, "examples": 1, "skip": 1, "sentences_created": 1}
 

@@ -1,8 +1,8 @@
 """Leech(만성 오답) 단어 처리: 단어별 처리 방법 추천과 일괄 실행.
 
 처리 방법
-- review_today: 오늘 다시 복습 (setDueDate "0" — 학습 기록·FSRS 기억 상태 유지)
-- reset: 새 카드로 초기화 (forgetCards — 학습 기록이 끊긴다)
+- review_today: 오늘 다시 복습 (setDueDate "0" — 학습 기록·FSRS 기억 상태 유지). Leech 카드에만 적용
+- reset: 새 카드로 초기화 (forgetCards — 학습 기록이 끊긴다). Leech 카드에만 적용
 - examples: AI 예문을 만들어 Sentence 덱에 추가하고 단어에 연결
 - promote: 청크 승격 — 후보를 보고 사용자가 골라야 하므로 일괄 실행하지 않는다 (화면에서 하나씩)
 - skip: 이번에는 손대지 않음
@@ -28,6 +28,7 @@ ACTION_LABELS = {"review_today": "다시 학습", "reset": "초기화", "example
 BACKUP_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "backups" / "leech"
 COMMON_TIERS = {"freq::tier1_essential", "freq::tier2_common"}
 PROMOTE_MIN_LAPSES = 10
+RESET_MIN_LAPSES = 8
 FEW_LINKS = 1
 _PLACEHOLDER = re.compile(r"\b(A|B|C|V|V-ing)\b")
 
@@ -56,6 +57,8 @@ def suggest_action(*, word: str, lapses: int, link_count: int, tier: str | None,
         return {"action": "promote", "reason": f"자주 쓰는 단어인데 {lapses}회 오답 → 쓰임이 분명한 청크로 바꾸기"}
     if link_count <= FEW_LINKS:
         return {"action": "examples", "reason": f"이 단어가 나오는 문장 카드 {link_count}개 → 예문으로 문맥 보강"}
+    if lapses >= RESET_MIN_LAPSES:
+        return {"action": "reset", "reason": f"문장 카드 {link_count}개로 문맥이 있는데도 {lapses}회 오답 → 처음부터 다시 학습"}
     return {"action": "review_today", "reason": f"문장 카드 {link_count}개로 문맥은 있음 → 오늘 다시 복습"}
 
 
@@ -65,10 +68,14 @@ def _cards_by_note(note_ids: list[int]) -> dict[int, list[int]]:
     return {n["noteId"]: list(n.get("cards", [])) for n in AnkiConnector.invoke("notesInfo", notes=note_ids) or []}
 
 
-def _backup(cards: list[int], items: list[dict[str, Any]]) -> Path:
+def _is_leech_card(c: dict[str, Any]) -> bool:
+    # 목록 조회와 같은 기준: Lapse 4회+ 또는 Ease 130% 이하, 보류(queue -1) 제외
+    return c.get("queue") != -1 and (c.get("lapses", 0) >= 4 or 0 < c.get("factor", 0) <= 1300)
+
+
+def _backup(info: list[dict[str, Any]], items: list[dict[str, Any]]) -> Path:
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     keep = ("cardId", "deckName", "interval", "factor", "reps", "lapses", "due", "type", "queue", "left", "mod")
-    info = AnkiConnector.invoke("cardsInfo", cards=cards) or []
     path = BACKUP_DIR / f"leech_{time.strftime('%Y%m%d_%H%M%S')}.json"
     path.write_text(
         json.dumps({"items": items, "cards": [{k: c.get(k) for k in keep} for c in info]}, ensure_ascii=False, indent=2),
@@ -94,19 +101,23 @@ def _apply(items, emit, check_cancel) -> dict[str, int]:
     sched_items = by_action["review_today"] + by_action["reset"]
     cards = _cards_by_note([it["note_id"] for it in sched_items])
 
-    # 1. 스케줄을 바꾸기 전에 카드 상태를 백업한다. 실패하면 아무것도 바꾸지 않는다.
+    # 1. 스케줄을 바꾸기 전에 노트의 모든 카드 상태를 백업한다. 실패하면 아무것도 바꾸지 않는다.
+    leech_cards: set[int] = set()
     if sched_items:
         all_cards = [c for it in sched_items for c in cards.get(it["note_id"], [])]
-        path = _backup(all_cards, sched_items)
+        info = AnkiConnector.invoke("cardsInfo", cards=all_cards) or []
+        path = _backup(info, sched_items)
         emit(f"카드 {len(all_cards)}장 상태 백업: {path.name}", 30)
+        # 단어 노트는 카드가 2장이다. 멀쩡한 쪽(예: 간격 190일)은 건드리지 않고 Leech 카드만 처리한다.
+        leech_cards = {c["cardId"] for c in info if _is_leech_card(c)}
 
     check_cancel()
-    review_cards = [c for it in by_action["review_today"] for c in cards.get(it["note_id"], [])]
+    review_cards = [c for it in by_action["review_today"] for c in cards.get(it["note_id"], []) if c in leech_cards]
     if review_cards:
         AnkiConnector.invoke("setDueDate", cards=review_cards, days="0")
         emit(f"다시 학습: 단어 {len(by_action['review_today'])}개 (카드 {len(review_cards)}장) 오늘 복습으로", 50)
 
-    reset_cards = [c for it in by_action["reset"] for c in cards.get(it["note_id"], [])]
+    reset_cards = [c for it in by_action["reset"] for c in cards.get(it["note_id"], []) if c in leech_cards]
     if reset_cards:
         AnkiConnector.invoke("forgetCards", cards=reset_cards)
         emit(f"초기화: 단어 {len(by_action['reset'])}개 (카드 {len(reset_cards)}장) 새 카드로", 60)

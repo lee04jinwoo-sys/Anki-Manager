@@ -10,9 +10,9 @@ from integrations.anki_connect import AnkiConnector
 NOW = time.time()
 
 
-def _ms(days_ago, hour=12):
-    d = dt.datetime.fromtimestamp(NOW) - dt.timedelta(days=days_ago)
-    return int(d.replace(hour=hour, minute=0, second=0).timestamp() * 1000)
+def _ms(days_ago):
+    # 지금 시각 기준 N일 전 1분 전: 실행 시각이 자정~새벽(하루 경계 전)이어도 같은 Anki 날짜에 들어간다
+    return int((NOW - days_ago * 86400 - 60) * 1000)
 
 
 @pytest.fixture
