@@ -58,6 +58,18 @@ def _print(pbar, *args, **kwargs):
     else:
         print(*args, **kwargs)
 
+# Gemini가 '해설' 대신 돌려주는 이름들 (2026-10-11 실측: 'explanation')
+_TRANSLATION_KEY_ALIASES = ("explanation", "translation", "번역")
+
+
+def _normalize_translation_key(item):
+    if isinstance(item, dict) and not item.get("해설"):
+        for alias in _TRANSLATION_KEY_ALIASES:
+            if item.get(alias):
+                item["해설"] = item[alias]
+                break
+
+
 class NoteCompleter:
     def __init__(self, pbar=None):
         self.client = genai.Client(api_key=GOOGLE_API_KEY)
@@ -126,6 +138,7 @@ class NoteCompleter:
         with concurrent.futures.ThreadPoolExecutor(max_workers=NOTE_COMPLETOR_MAX_WORKERS) as executor:
             prompt_template = """
             다음 문장들에 대해 자연스러운 한국어 번역을 포함한 JSON 객체 리스트를 'sentences' 키에 담아 반환하세요.
+            각 객체는 정확히 {{"문장": "<원문>", "해설": "<한국어 번역>"}} 형식이어야 합니다 (키 이름을 바꾸지 마세요).
             '해설' 필드에는 '~라는 의미입니다'와 같은 부연 설명 없이, 문장 자체의 자연스러운 한국어 번역 결과만 직접적으로 작성하세요.
             만약 문장에 'A, B, V' 같은 플레이스홀더가 남아있다면 이를 자연스러운 실제 상황 단어로 대체하여 문장을 완성하세요.
             
@@ -143,6 +156,8 @@ class NoteCompleter:
                     if len(ai_items) == len(chunk):
                         for original_item, ai_item in zip(chunk, ai_items):
                             ai_item['문장'] = original_item
+                    for ai_item in ai_items:
+                        _normalize_translation_key(ai_item)
                     all_results.extend(ai_items)
         return all_results
 
