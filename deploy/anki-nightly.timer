@@ -1,0 +1,9 @@
+[Unit]
+Description=Anki nightly maintenance at 03:00 Toronto time (after the 06:30 UTC data/ snapshot)
+
+[Timer]
+OnCalendar=*-*-* 03:00:00 America/Toronto
+Persistent=true
+
+[Install]
+WantedBy=timers.target

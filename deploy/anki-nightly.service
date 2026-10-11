@@ -1,0 +1,14 @@
+[Unit]
+Description=Anki nightly maintenance: fill empty fields, audio, POS (no deck moves, no duplicates)
+Wants=anki-manager.service
+After=anki-manager.service anki-backup.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/anki-manager
+EnvironmentFile=/home/ubuntu/anki-manager/.env.telegram
+EnvironmentFile=/home/ubuntu/anki-manager/telegram_chat.env
+ExecStart=/home/ubuntu/anki-manager/.venv/bin/python -m integrations.nightly_maintenance
+TimeoutStartSec=4000
+Nice=10
