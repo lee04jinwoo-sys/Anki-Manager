@@ -63,6 +63,7 @@ def sync_and_report(sync, notify, state_path=STATE_PATH):
             _safe_notify(notify, text)
         _save_state(state_path, {"last_error": text})
         return False
+    logger.info("동기화 성공")
     if last_error:
         _safe_notify(notify, "✅ 서버 Anki 동기화가 복구됐습니다.")
     _save_state(state_path, {"last_error": None})
@@ -96,8 +97,7 @@ def telegram_notifier():
 def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     logging.getLogger("urllib3").setLevel(logging.WARNING)
-    ok = sync_and_report(anki_connect_sync, telegram_notifier())
-    logger.info("동기화 %s", "성공" if ok else "실패")
+    sync_and_report(anki_connect_sync, telegram_notifier())
 
 
 if __name__ == "__main__":
