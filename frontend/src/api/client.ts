@@ -128,6 +128,8 @@ export const api = {
     request<import('../types/corpus').CollocationResponse>(
       `/corpus/collocations?word=${encodeURIComponent(word)}${refresh ? '&refresh=true' : ''}`,
     ),
+  promoteBatch: (items: import('../types/corpus').PromoteChunkRequest[]): Promise<ActionResult> =>
+    request<ActionResult>('/corpus/promote-batch', { method: 'POST', body: JSON.stringify({ items }) }),
   promoteChunk: (
     req: import('../types/corpus').PromoteChunkRequest,
   ): Promise<import('../types/corpus').PromoteChunkResponse> =>

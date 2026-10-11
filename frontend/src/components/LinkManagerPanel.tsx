@@ -23,6 +23,7 @@ import type {
 } from '../types/dashboard'
 import type { CorpusAuditStats } from '../types/corpus'
 import { PromoteChunkModal } from './modals/PromoteChunkModal'
+import { PromoteReviewModal } from './modals/PromoteReviewModal'
 import { LEECH_ACTIONS, actionLabel, choiceFor, planActions } from '../lib/leechPlan'
 
 interface LinkManagerPanelProps {
@@ -75,7 +76,8 @@ export const LinkManagerPanel: React.FC<LinkManagerPanelProps> = ({
 
   // Leech 처리: 단어별 선택(기본값은 서버 추천), 승격 대기열
   const [choices, setChoices] = useState<Map<number, LeechAction>>(new Map())
-  const [promoteQueue, setPromoteQueue] = useState<LinkVocabItem[]>([])
+  const [reviewItems, setReviewItems] = useState<LinkVocabItem[]>([])
+  const [isReviewOpen, setIsReviewOpen] = useState(false)
   const [isApplying, setIsApplying] = useState(false)
 
   // Debounce search query
@@ -260,19 +262,6 @@ export const LinkManagerPanel: React.FC<LinkManagerPanelProps> = ({
   const setChoice = (noteId: number, action: LeechAction) =>
     setChoices((prev) => new Map(prev).set(noteId, action))
 
-  // 승격 대기열: 창이 닫힐 때마다 다음 단어를 연다
-  useEffect(() => {
-    if (promoteQueue.length > 0 && !isChunkModalOpen) {
-      setChunkModalItem(promoteQueue[0]!)
-      setIsChunkModalOpen(true)
-    }
-  }, [promoteQueue, isChunkModalOpen])
-
-  const closeChunkModal = () => {
-    setIsChunkModalOpen(false)
-    setPromoteQueue((q) => (q.length > 0 && q[0]!.note_id === chunkModalItem?.note_id ? q.slice(1) : q))
-  }
-
   const waitForJobThenRefresh = async () => {
     const deadline = Date.now() + 10 * 60 * 1000
     while (Date.now() < deadline) {
@@ -295,7 +284,7 @@ export const LinkManagerPanel: React.FC<LinkManagerPanelProps> = ({
     const lines = [
       `다시 학습 ${c.review_today} · 예문 추가 ${c.examples} · 청크 승격 ${c.promote} · 초기화 ${c.reset} · 건너뛰기 ${c.skip}`,
       c.reset > 0 ? '⚠ 초기화한 카드는 학습 기록이 끊깁니다 (실행 전 상태는 data/backups/leech/ 에 저장).' : '',
-      c.promote > 0 ? '청크 승격은 적용 후 단어마다 후보를 보고 직접 고릅니다.' : '',
+      c.promote > 0 ? '청크 승격은 다음 화면에서 단어별 후보를 한 번에 보고 고릅니다.' : '',
       '진행할까요?',
     ].filter(Boolean)
     if (!window.confirm(lines.join('\n'))) return
@@ -314,7 +303,10 @@ export const LinkManagerPanel: React.FC<LinkManagerPanelProps> = ({
       }
       setSelectedMap(new Map())
       setChoices(new Map())
-      if (plan.promoteQueue.length > 0) setPromoteQueue(plan.promoteQueue)
+      if (plan.promoteQueue.length > 0) {
+        setReviewItems(plan.promoteQueue)
+        setIsReviewOpen(true)
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Leech 처리 요청 실패')
     } finally {
@@ -853,10 +845,21 @@ export const LinkManagerPanel: React.FC<LinkManagerPanelProps> = ({
         </div>
       )}
 
-      {/* 6. Promote Chunk Modal */}
+      {/* 6a. 청크 승격 한 화면 검토 */}
+      <PromoteReviewModal
+        isOpen={isReviewOpen}
+        items={reviewItems}
+        onClose={() => setIsReviewOpen(false)}
+        onStarted={() => {
+          setGenerationFeedback('청크 승격 작업을 시작했습니다. 진행 상황은 오른쪽 아래 작업 창에서 볼 수 있습니다.')
+          void waitForJobThenRefresh()
+        }}
+      />
+
+      {/* 6b. Promote Chunk Modal (단어 하나) */}
       <PromoteChunkModal
         isOpen={isChunkModalOpen}
-        onClose={closeChunkModal}
+        onClose={() => setIsChunkModalOpen(false)}
         targetItem={chunkModalItem}
         onPromoted={() => {
           fetchVocab()

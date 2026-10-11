@@ -9,7 +9,7 @@ export interface CollocationCandidate {
   example_2: string
   trans_2: string
   explanation: string
-  frequency_score?: number
+  frequency_score?: number | null
 }
 
 export interface CollocationResponse {
