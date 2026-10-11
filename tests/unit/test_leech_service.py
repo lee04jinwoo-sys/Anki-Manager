@@ -167,3 +167,14 @@ def test_leech_list_items_carry_suggestion_and_tier(monkeypatch):
     item = r.json()["items"][0]
     assert item["tier"] == "freq::tier2_common"
     assert item["suggestion"]["action"] == "promote" and item["suggestion"]["reason"]
+
+
+@pytest.mark.parametrize("card, expected", [
+    ({"queue": 2, "lapses": 18, "factor": 1300, "interval": 12}, True),   # come over 카드 2
+    ({"queue": 2, "lapses": 2, "factor": 2100, "interval": 190}, False),  # come over 카드 1
+    ({"queue": 2, "lapses": 4, "factor": 1850, "interval": 482}, False),  # as for A 카드 2: 지금은 잘 기억함
+    ({"queue": 2, "lapses": 5, "factor": 2000, "interval": 6}, True),     # 오답 많고 간격 짧음
+    ({"queue": -1, "lapses": 9, "factor": 1300, "interval": 3}, False),   # 보류된 카드
+])
+def test_only_currently_failing_cards_are_rescheduled(card, expected):
+    assert ls._is_leech_card(card) is expected

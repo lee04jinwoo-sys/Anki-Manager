@@ -68,9 +68,19 @@ def _cards_by_note(note_ids: list[int]) -> dict[int, list[int]]:
     return {n["noteId"]: list(n.get("cards", [])) for n in AnkiConnector.invoke("notesInfo", notes=note_ids) or []}
 
 
+MATURE_IVL = 21
+
+
 def _is_leech_card(c: dict[str, Any]) -> bool:
-    # 목록 조회와 같은 기준: Lapse 4회+ 또는 Ease 130% 이하, 보류(queue -1) 제외
-    return c.get("queue") != -1 and (c.get("lapses", 0) >= 4 or 0 < c.get("factor", 0) <= 1300)
+    """지금 실패하고 있는 카드인가. Ease 130% 이하, 또는 오답 4회+ 이면서 간격이 21일 미만.
+
+    누적 오답만 보면 지금은 잘 기억하는 카드(as for A 카드 2: 간격 482일, 오답 4회)까지 초기화된다.
+    """
+    if c.get("queue") == -1:
+        return False
+    if 0 < c.get("factor", 0) <= 1300:
+        return True
+    return c.get("lapses", 0) >= 4 and c.get("interval", 0) < MATURE_IVL
 
 
 def _backup(info: list[dict[str, Any]], items: list[dict[str, Any]]) -> Path:
