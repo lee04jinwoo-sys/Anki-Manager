@@ -26,6 +26,15 @@ import { PromoteChunkModal } from './modals/PromoteChunkModal'
 import { PromoteReviewModal } from './modals/PromoteReviewModal'
 import { LEECH_ACTIONS, actionLabel, choiceFor, planActions } from '../lib/leechPlan'
 
+const TIER_LABELS: Record<string, string> = {
+  'freq::tier1_essential': '필수',
+  'freq::tier2_common': '상용',
+  'freq::tier3_advanced': '고급',
+  'freq::tier4_academic': '학술',
+  'freq::tier5_rare': '희귀',
+}
+const tierLabel = (t?: string) => (t ? TIER_LABELS[t] ?? '–' : '–')
+
 interface LinkManagerPanelProps {
   onRefreshDashboard?: () => void
 }
@@ -441,14 +450,13 @@ export const LinkManagerPanel: React.FC<LinkManagerPanelProps> = ({
                 setFilterMode('leech')
                 setOffset(0)
               }}
-              className={`px-2.5 py-1 rounded transition-colors flex items-center gap-1 ${
+              className={`px-2.5 py-1 rounded transition-colors ${
                 filterMode === 'leech'
-                  ? 'bg-apple-red/20 text-apple-red font-semibold shadow-apple-subtle'
+                  ? 'bg-apple-card font-semibold text-apple-text shadow-apple-subtle'
                   : 'text-apple-secondary hover:text-apple-text'
               }`}
             >
-              <Flame className="w-3 h-3" />
-              <span>망각 위험군 (Leech)</span>
+              만성 오답
             </button>
             <button
               type="button"
@@ -500,11 +508,11 @@ export const LinkManagerPanel: React.FC<LinkManagerPanelProps> = ({
           <button
             type="button"
             onClick={handlePickLeech}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-apple-red bg-apple-red/10 hover:bg-apple-red/15 rounded-apple-sm border border-apple-red/20 transition-all shadow-apple-subtle"
-            title="많이 틀리는 미연결 단어 20개 자동 선택"
+            className="inline-flex items-center gap-1.5 rounded-apple-sm border border-apple-border bg-apple-subtle px-2.5 py-1.5 text-xs font-medium text-apple-text hover:bg-apple-subtleHover"
+            title="문장이 하나도 없는 단어 중 가장 많이 틀린 20개 선택"
           >
-            <Flame className="w-3.5 h-3.5" />
-            <span>오답 20개 추출</span>
+            <Flame className="h-3.5 w-3.5 text-apple-secondary" />
+            <span>오답 많은 20개 선택</span>
           </button>
           <button
             type="button"
@@ -542,203 +550,107 @@ export const LinkManagerPanel: React.FC<LinkManagerPanelProps> = ({
         </div>
       )}
 
-      {/* 4. Unified Data Table */}
-      <div className="border border-apple-border rounded-apple-sm overflow-hidden bg-apple-card">
+      {/* 4. 단어 표 */}
+      <div className="overflow-hidden rounded-apple-sm border border-apple-border">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
+          <table className="w-full border-collapse text-left text-xs">
             <thead>
-              <tr className="border-b border-apple-border bg-apple-subtle/50 text-apple-secondary font-medium">
-                <th className="py-2.5 px-3 w-10 text-center">
+              <tr className="border-b border-apple-border text-[11px] text-apple-secondary">
+                <th className="w-10 px-3 py-2 text-center font-normal">
                   <button
                     type="button"
                     onClick={handleToggleSelectAllVisible}
-                    className="p-0.5 hover:text-apple-text transition-colors"
-                    title="현재 페이지 전체 선택/해제"
+                    className="p-0.5 hover:text-apple-text"
+                    title="이 페이지 전체 선택/해제"
                   >
-                    {vocabData.items.length > 0 &&
-                    vocabData.items.every((it) =>
-                      selectedMap.has(it.note_id),
-                    ) ? (
-                      <CheckSquare className="w-4 h-4 text-apple-blue" />
+                    {vocabData.items.length > 0 && vocabData.items.every((it) => selectedMap.has(it.note_id)) ? (
+                      <CheckSquare className="h-4 w-4 text-apple-blue" />
                     ) : (
-                      <Square className="w-4 h-4" />
+                      <Square className="h-4 w-4" />
                     )}
                   </button>
                 </th>
-                <th className="py-2.5 px-3 min-w-[140px]">단어 / 숙어</th>
-                <th className="py-2.5 px-2 w-16 text-center">품사</th>
-                <th className="py-2.5 px-3 min-w-[180px]">뜻 / 의미</th>
-                <th className="py-2.5 px-2 w-20 text-center">오답 (Lapse)</th>
-                <th className="py-2.5 px-2 w-20 text-center">난이도 (Ease)</th>
-                <th className="py-2.5 px-3 w-24 text-center">문장 연결</th>
-                {isLeechMode ? (
-                  <th className="py-2.5 px-3 min-w-[200px]">처리 (기본값은 추천)</th>
-                ) : (
-                  <>
-                    <th className="py-2.5 px-3 w-24 text-center">리스크 진단</th>
-                    <th className="py-2.5 px-3 w-24 text-center">청크 승격</th>
-                  </>
-                )}
+                <th className="px-3 py-2 font-normal">단어</th>
+                <th className="w-16 px-2 py-2 text-right font-normal">오답</th>
+                <th className="w-16 px-2 py-2 text-right font-normal">문장</th>
+                {isLeechMode && <th className="w-20 px-2 py-2 font-normal">빈도</th>}
+                <th className={`px-3 py-2 font-normal ${isLeechMode ? 'w-[260px]' : 'w-28 text-right'}`}>{isLeechMode ? '처리' : ''}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-apple-border/60">
+            <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-apple-secondary">
-                    <Loader2 className="w-5 h-5 animate-spin mx-auto text-apple-blue mb-2" />
-                    <span>어휘 목록 로딩 중...</span>
+                  <td colSpan={6} className="py-12 text-center text-apple-secondary">
+                    <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin text-apple-blue" />
+                    어휘 목록 로딩 중...
                   </td>
                 </tr>
               ) : vocabData.items.length === 0 ? (
                 <tr>
-                  <td
-                    colSpan={9}
-                    className="py-12 text-center text-apple-secondary"
-                  >
-                    해당 조건에 해당하는 어휘가 없습니다.
+                  <td colSpan={6} className="py-12 text-center text-apple-secondary">
+                    해당 조건에 맞는 단어가 없습니다.
                   </td>
                 </tr>
               ) : (
                 vocabData.items.map((item) => {
                   const isChecked = selectedMap.has(item.note_id)
-                  const isZero = item.link_count === 0
-                  const isLeech =
-                    (item.lapses !== undefined && item.lapses >= 4) ||
-                    (item.ease !== undefined && item.ease <= 130 && item.ease > 0)
-
+                  const choice = choiceFor(item, choices)
                   return (
                     <tr
                       key={item.note_id}
                       onClick={() => toggleSelectRow(item)}
-                      className={`cursor-pointer transition-colors ${
-                        isChecked
-                          ? 'bg-apple-blue/10 hover:bg-apple-blue/15'
-                          : 'hover:bg-apple-subtle/40'
-                      }`}
+                      className={`cursor-pointer border-t border-apple-border/60 ${isChecked ? 'bg-apple-blue/10' : 'hover:bg-apple-subtle/40'}`}
                     >
-                      <td
-                        className="py-2.5 px-3 text-center"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => toggleSelectRow(item)}
-                          className="p-0.5 text-apple-secondary hover:text-apple-text transition-colors"
-                        >
-                          {isChecked ? (
-                            <CheckSquare className="w-4 h-4 text-apple-blue" />
-                          ) : (
-                            <Square className="w-4 h-4" />
-                          )}
-                        </button>
+                      <td className="px-3 py-2 text-center text-apple-secondary">
+                        {isChecked ? <CheckSquare className="mx-auto h-4 w-4 text-apple-blue" /> : <Square className="mx-auto h-4 w-4" />}
                       </td>
-                      <td className="py-2.5 px-3 font-mono font-semibold text-apple-text">
-                        {item.word}
+                      <td className="max-w-0 px-3 py-2">
+                        <div className="truncate text-[13px] font-medium text-apple-text">{item.word}</div>
+                        <div className="truncate text-[11px] text-apple-secondary">
+                          {item.pos && <span className="mr-1.5 opacity-70">{item.pos}</span>}
+                          {item.meaning}
+                        </div>
                       </td>
-                      <td className="py-2.5 px-2 text-center">
-                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-apple-bg text-apple-secondary border border-apple-border">
-                          {item.pos || '미분류'}
-                        </span>
+                      <td className="px-2 py-2 text-right font-mono text-apple-text">
+                        {item.lapses ? item.lapses : <span className="text-apple-secondary">–</span>}
                       </td>
-                      <td className="py-2.5 px-3 text-apple-secondary truncate max-w-xs">
-                        {item.meaning}
+                      <td className="px-2 py-2 text-right font-mono">
+                        {item.link_count > 0 ? <span className="text-apple-text">{item.link_count}</span> : <span className="text-apple-secondary">0</span>}
                       </td>
-                      <td className="py-2.5 px-2 text-center font-mono">
-                        {item.lapses !== undefined && item.lapses > 0 ? (
-                          <span
-                            className={
-                              item.lapses >= 4
-                                ? 'font-bold text-apple-red'
-                                : 'text-apple-text'
-                            }
-                          >
-                            {item.lapses}회
-                          </span>
-                        ) : (
-                          <span className="text-apple-secondary text-[11px]">-</span>
-                        )}
-                      </td>
-                      <td className="py-2.5 px-2 text-center font-mono">
-                        {item.ease !== undefined && item.ease > 0 ? (
-                          <span
-                            className={
-                              item.ease <= 130
-                                ? 'font-bold text-apple-red'
-                                : 'text-apple-text'
-                            }
-                          >
-                            {item.ease}%
-                          </span>
-                        ) : (
-                          <span className="text-apple-secondary text-[11px]">-</span>
-                        )}
-                      </td>
-                      <td className="py-2.5 px-3 text-center font-mono">
-                        <span
-                          className={`inline-block px-2 py-0.5 rounded text-[11px] font-medium border ${
-                            isZero
-                              ? 'bg-apple-orange/10 text-apple-orange border-apple-orange/30'
-                              : 'bg-apple-green/10 text-apple-green border-apple-green/30'
-                          }`}
-                        >
-                          {item.link_count}개
-                        </span>
-                      </td>
+                      {isLeechMode && (
+                        <td className="px-2 py-2 text-[11px] text-apple-secondary">{tierLabel(item.tier)}</td>
+                      )}
                       {isLeechMode ? (
-                        <td className="py-2 px-3" onClick={(e) => e.stopPropagation()}>
+                        <td className="px-3 py-1.5" onClick={(e) => e.stopPropagation()}>
                           <select
-                            value={choiceFor(item, choices)}
+                            value={choice}
                             onChange={(e) => setChoice(item.note_id, e.target.value as LeechAction)}
                             className="w-full rounded-apple-sm border border-apple-border bg-apple-bg px-2 py-1 text-xs text-apple-text outline-none focus:border-apple-blue"
-                            title={LEECH_ACTIONS.find((a) => a.value === choiceFor(item, choices))?.hint}
                           >
                             {LEECH_ACTIONS.map((a) => (
                               <option key={a.value} value={a.value}>
                                 {a.label}
-                                {item.suggestion?.action === a.value ? ' (추천)' : ''}
+                                {item.suggestion?.action === a.value ? ' · 추천' : ''}
                               </option>
                             ))}
                           </select>
                           {item.suggestion && (
-                            <div className="mt-1 text-[10px] leading-snug text-apple-secondary">{item.suggestion.reason}</div>
+                            <div className="mt-0.5 truncate text-[10px] text-apple-secondary" title={item.suggestion.reason}>
+                              {item.suggestion.reason}
+                            </div>
                           )}
                         </td>
                       ) : (
-                        <>
-                        <td className="py-2.5 px-3 text-center">
-                          {isLeech && isZero ? (
-                            <span className="text-[10px] font-medium text-apple-red bg-apple-red/10 px-2 py-0.5 rounded border border-apple-red/20">
-                              고위험 고립
-                            </span>
-                          ) : isZero ? (
-                            <span className="text-[10px] text-apple-orange font-medium bg-apple-orange/10 px-2 py-0.5 rounded border border-apple-orange/20">
-                              미연결
-                            </span>
-                          ) : isLeech ? (
-                            <span className="text-[10px] text-purple-400 font-medium bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20">
-                              반복 망각
-                            </span>
-                          ) : (
-                            <span className="text-[10px] text-apple-secondary font-mono">
-                              안정
-                            </span>
-                          )}
-                        </td>
-                        <td
-                          className="py-2.5 px-3 text-center"
-                          onClick={(e) => e.stopPropagation()}
-                        >
+                        <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
                           <button
                             type="button"
                             onClick={() => handleOpenChunkModal(item)}
-                            className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-md transition-colors shadow-sm"
-                            title="고빈도 청크로 1-클릭 승격"
+                            className="text-[11px] text-apple-secondary underline-offset-2 hover:text-apple-text hover:underline"
+                            title="고빈도 청크로 바꾸기"
                           >
-                            <Sparkles className="w-3 h-3 text-amber-400" />
-                            <span>청크 승격</span>
+                            청크 승격
                           </button>
                         </td>
-                        </>
                       )}
                     </tr>
                   )

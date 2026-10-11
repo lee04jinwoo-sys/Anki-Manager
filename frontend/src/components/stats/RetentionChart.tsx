@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import type { StatsOverview } from '../../types/stats'
-import { ChartCard, LegendSwatch, SimpleTable } from './ChartCard'
+import { ChartCard, LegendSwatch, RangeToggle, SimpleTable } from './ChartCard'
+import { RETENTION_RANGES, type RetentionRange } from '../../lib/chartRange'
 import { useTooltip } from './Tooltip'
 import { useWidth } from './useWidth'
 
@@ -18,7 +19,9 @@ const SERIES = [
   { key: 'young' as const, label: '새싹 카드', color: 'var(--viz-series-2)' },
 ]
 
-export const RetentionChart: React.FC<{ weeks: Week[]; target: number | null }> = ({ weeks, target }) => {
+export const RetentionChart: React.FC<{ weeks: Week[]; target: number | null }> = ({ weeks: allWeeks, target }) => {
+  const [range, setRange] = useState<RetentionRange>('6m')
+  const weeks = allWeeks.slice(-RETENTION_RANGES.find((r) => r.value === range)!.weeks)
   const { ref, width } = useWidth<HTMLDivElement>()
   const { node: tip, show, hide } = useTooltip()
   const [hover, setHover] = useState<number | null>(null)
@@ -62,7 +65,8 @@ export const RetentionChart: React.FC<{ weeks: Week[]; target: number | null }> 
   return (
     <ChartCard
       title="주간 정답률 추이"
-      subtitle={`영어 덱 · 7일 단위 12주 · 복습 리뷰 중 Again 이외 비율${target ? ` · 가로선은 목표 ${target}%` : ''}`}
+      subtitle={`영어 덱 · 7일 단위 ${weeks.length}주 · 복습 리뷰 중 Again 이외 비율${target ? ` · 가로선은 목표 ${target}%` : ''}`}
+      controls={<RangeToggle value={range} options={RETENTION_RANGES} onChange={setRange} />}
       legend={SERIES.map((s) => (
         <LegendSwatch key={s.key} color={s.color} label={s.label} line />
       ))}
@@ -110,7 +114,7 @@ export const RetentionChart: React.FC<{ weeks: Week[]; target: number | null }> 
           ))}
           {weeks.map((w, i) => (
             <g key={w.week_end}>
-              {i % 3 === 2 && (
+              {(weeks.length - 1 - i) % Math.ceil(weeks.length / 6) === 0 && (
                 <text x={x(i)} y={H - 6} textAnchor="middle" fontSize={10} className="fill-apple-secondary">
                   {short(w.week_end)}
                 </text>
