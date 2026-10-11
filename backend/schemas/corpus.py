@@ -40,6 +40,10 @@ class PromoteChunkRequest(BaseModel):
     reset_to_new: bool = Field(default=True, description="새 카드로 초기화(lapses=0, reps=0, ease=250%) 여부")
 
 
+class PromoteBatchRequest(BaseModel):
+    items: List[PromoteChunkRequest] = Field(min_length=1)
+
+
 class PromoteChunkResponse(BaseModel):
     success: bool
     note_id: int

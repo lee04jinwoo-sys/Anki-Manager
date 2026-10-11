@@ -3,11 +3,14 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from backend.schemas.corpus import (
     CollocationResponse,
+    PromoteBatchRequest,
     PromoteChunkRequest,
     PromoteChunkResponse,
     CorpusAuditStatsResponse
 )
+from backend.schemas.jobs import ActionResult
 from backend.services.corpus_service import CorpusService
+from backend.services.jobs import jobs
 
 logger = logging.getLogger("CorpusRouter")
 router = APIRouter(prefix="/api/corpus", tags=["Corpus & Collocations"])
@@ -50,3 +53,24 @@ def promote_chunk(req: PromoteChunkRequest) -> PromoteChunkResponse:
             detail=res.error or "Failed to promote chunk"
         )
     return res
+
+
+@router.post("/promote-batch")
+def promote_batch(req: PromoteBatchRequest) -> ActionResult:
+    """여러 단어를 한 번에 승격 (백그라운드 작업). 단어마다 승격 전 상태가 백업되고, 단어 사이에서 취소할 수 있다."""
+    items = list(req.items)
+
+    def run() -> None:
+        ok, failed = 0, []
+        for i, item in enumerate(items):
+            jobs.raise_if_cancelled()
+            jobs.emit(f"승격 중 ({i + 1}/{len(items)}): {item.new_chunk}", progress=10 + int(85 * i / len(items)))
+            res = CorpusService.promote_chunk(item)
+            if res.success:
+                ok += 1
+            else:
+                failed.append(f"{item.new_chunk}: {res.error}")
+                jobs.emit(f"⚠ 승격 실패 — {item.new_chunk}: {res.error}", level="warn")
+        jobs.emit(f"청크 승격 완료: 성공 {ok} · 실패 {len(failed)}", progress=100)
+
+    return jobs.start("청크 일괄 승격", run, success_message="청크 승격 작업이 끝났습니다.")
