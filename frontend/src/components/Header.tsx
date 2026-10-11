@@ -1,6 +1,7 @@
 import React from 'react'
 import { Inbox, Palette, RefreshCw, Wrench } from 'lucide-react'
 import type { DashboardResponse } from '../types/dashboard'
+import { showObsidianImport } from '../lib/obsidianInbox'
 
 interface HeaderProps {
   data: DashboardResponse | null
@@ -58,14 +59,16 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <ActionButton
-            icon={<Inbox className="h-3.5 w-3.5 text-apple-secondary" />}
-            label="가져오기"
-            badge={inbox?.available ? inbox.total_count : undefined}
-            onClick={onOpenObsidian}
-            disabled={!isConnected}
-            title="Obsidian Inbox 항목을 Anki 카드로 등록"
-          />
+          {showObsidianImport(inbox) && (
+            <ActionButton
+              icon={<Inbox className="h-3.5 w-3.5 text-apple-secondary" />}
+              label="가져오기"
+              badge={inbox?.total_count}
+              onClick={onOpenObsidian}
+              disabled={!isConnected}
+              title="Obsidian Inbox 항목을 Anki 카드로 등록"
+            />
+          )}
           <ActionButton
             icon={<Wrench className="h-3.5 w-3.5 text-apple-secondary" />}
             label="노트 정리"

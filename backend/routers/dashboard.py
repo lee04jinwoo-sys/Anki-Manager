@@ -6,6 +6,8 @@ Learning statistics live in /api/stats/overview.
 from __future__ import annotations
 
 import logging
+import os
+
 from fastapi import APIRouter
 
 from backend.schemas.dashboard import (
@@ -15,7 +17,7 @@ from backend.schemas.dashboard import (
 )
 from backend.services.jobs import jobs
 from collectors.obsidian import ObsidianManager
-from config import MODEL_VOCAB
+from config import MODEL_VOCAB, OBSIDIAN_VAULT_PATH
 from integrations.anki_connect import AnkiConnector
 
 logger = logging.getLogger("AnkiManagerDashboard")
@@ -57,6 +59,15 @@ def get_dashboard_summary() -> DashboardResponse:
 
     # 3. Obsidian Inbox 대기열 요약 (단어 및 문장 전수 집계)
     inbox_summary = ObsidianInboxSummary(available=False)
+    # 볼트가 없는 곳(서버)에서는 조회하지 않는다. ObsidianManager는 Inbox 파일이 없으면 만들려고 한다.
+    if not os.path.isdir(OBSIDIAN_VAULT_PATH):
+        return DashboardResponse(
+            connected=True,
+            anki_version=anki_version,
+            maintenance=maintenance,
+            obsidian_inbox=inbox_summary,
+            active_job=jobs.snapshot(),
+        )
     try:
         mgr = ObsidianManager()
         data = mgr.fetch_inbox_content()
