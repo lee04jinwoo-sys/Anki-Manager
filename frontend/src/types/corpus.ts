@@ -17,6 +17,7 @@ export interface CollocationResponse {
   original_rank: number
   original_tier: string
   candidates: CollocationCandidate[]
+  cached?: boolean
 }
 
 export interface PromoteChunkRequest {

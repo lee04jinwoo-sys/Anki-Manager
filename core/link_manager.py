@@ -4,6 +4,8 @@ import json
 import sqlite3
 import html
 import datetime
+import functools
+import time
 from pathlib import Path
 from collections import defaultdict
 from typing import List, Dict, Any, Optional, Tuple, Set
@@ -203,6 +205,15 @@ class PatternMatcher:
 
     @classmethod
     def build_regex(cls, word_or_idiom: str) -> Optional[re.Pattern]:
+        """단어/숙어용 정규식. 단어별로 한 번만 만든다 (re 모듈 자체 캐시는 512개뿐)."""
+        return _cached_build_regex(word_or_idiom)
+
+    @classmethod
+    def clear_regex_cache(cls) -> None:
+        _cached_build_regex.cache_clear()
+
+    @classmethod
+    def _build_regex_uncached(cls, word_or_idiom: str) -> Optional[re.Pattern]:
         cleaned = clean_text(word_or_idiom).strip()
         if not cleaned:
             return None
@@ -278,8 +289,22 @@ class PatternMatcher:
             return re.compile(r"\b" + re.escape(cleaned.lower()) + r"\b", re.IGNORECASE)
 
 
+@functools.lru_cache(maxsize=32768)
+def _cached_build_regex(word_or_idiom: str) -> Optional[re.Pattern]:
+    return PatternMatcher._build_regex_uncached(word_or_idiom)
+
+
+# Leech 목록: 페이지 넘김·검색마다 카드 2천여 장의 cardsInfo를 다시 받지 않도록 잠깐 재사용한다.
+_LEECH_CACHE_TTL = 60.0
+_leech_cache: Dict[str, Tuple[float, List[Dict[str, Any]]]] = {}
+
+
 class LinkManager:
     """초고속 역색인 기반 단어-문장 링크 관리 서비스"""
+
+    @classmethod
+    def invalidate_leech_cache(cls) -> None:
+        _leech_cache.clear()
 
     @classmethod
     def scan_and_rebuild_links(cls) -> Dict[str, Any]:
@@ -367,6 +392,7 @@ class LinkManager:
                     vocab_counts[v["note_id"]] += 1
 
         # 5. DB 일괄 저장
+        cls.invalidate_leech_cache()
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM links")
@@ -448,17 +474,22 @@ class LinkManager:
                 anki_q = f'note:"{MODEL_VOCAB}" (prop:ease<=1.3 OR prop:lapses>=4) -is:suspended'
                 if search:
                     anki_q += f' "{search}"'
-                card_ids = AnkiConnector.invoke("findCards", query=anki_q) or []
-                all_cards = AnkiConnector.invoke("cardsInfo", cards=card_ids) if card_ids else []
+                cached = _leech_cache.get(anki_q)
+                if cached and time.time() - cached[0] < _LEECH_CACHE_TTL:
+                    ranked = cached[1]
+                else:
+                    card_ids = AnkiConnector.invoke("findCards", query=anki_q) or []
+                    all_cards = AnkiConnector.invoke("cardsInfo", cards=card_ids) if card_ids else []
 
-                # 노트 단위로 묶는다 (단어 노트는 카드가 2장): 가장 나쁜 카드 기준
-                worst_by_note: Dict[int, Dict[str, Any]] = {}
-                for c in all_cards or []:
-                    nid = c["note"]
-                    prev = worst_by_note.get(nid)
-                    if prev is None or (c.get("lapses", 0), -c.get("factor", 0)) > (prev.get("lapses", 0), -prev.get("factor", 0)):
-                        worst_by_note[nid] = c
-                ranked = sorted(worst_by_note.values(), key=lambda c: (-c.get("lapses", 0), c.get("factor", 0)))
+                    # 노트 단위로 묶는다 (단어 노트는 카드가 2장): 가장 나쁜 카드 기준
+                    worst_by_note: Dict[int, Dict[str, Any]] = {}
+                    for c in all_cards or []:
+                        nid = c["note"]
+                        prev = worst_by_note.get(nid)
+                        if prev is None or (c.get("lapses", 0), -c.get("factor", 0)) > (prev.get("lapses", 0), -prev.get("factor", 0)):
+                            worst_by_note[nid] = c
+                    ranked = sorted(worst_by_note.values(), key=lambda c: (-c.get("lapses", 0), c.get("factor", 0)))
+                    _leech_cache[anki_q] = (time.time(), ranked)
                 total_items = len(ranked)
                 cards_info = ranked[offset:offset + limit]
                 note_ids = [c["note"] for c in cards_info]

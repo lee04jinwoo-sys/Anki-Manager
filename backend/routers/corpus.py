@@ -20,7 +20,10 @@ def get_corpus_audit_stats() -> CorpusAuditStatsResponse:
 
 
 @router.get("/collocations", response_model=CollocationResponse)
-def get_collocations(word: str = Query(..., description="조회할 단어")) -> CollocationResponse:
+def get_collocations(
+    word: str = Query(..., description="조회할 단어"),
+    refresh: bool = Query(False, description="저장된 후보를 무시하고 새로 생성"),
+) -> CollocationResponse:
     """단어의 코퍼스 랭킹 및 고빈도 연어(Collocation)/청크 후보 3~4개 추천"""
     if not word.strip():
         raise HTTPException(
@@ -28,7 +31,7 @@ def get_collocations(word: str = Query(..., description="조회할 단어")) -> 
             detail="Word query parameter cannot be empty"
         )
     try:
-        return CorpusService.get_collocations(word.strip())
+        return CorpusService.get_collocations(word.strip(), refresh=refresh)
     except Exception as e:
         logger.error(f"Error fetching collocations for '{word}': {e}", exc_info=True)
         raise HTTPException(

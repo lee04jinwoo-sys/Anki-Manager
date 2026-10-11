@@ -14,6 +14,7 @@ from typing import List, Tuple, Optional, Dict, Any
 from google import genai
 from google.genai import types
 from dotenv import load_dotenv
+from utils.settings_manager import get_setting
 from nltk.stem import WordNetLemmatizer
 
 from integrations.anki_connect import AnkiConnector
@@ -36,6 +37,8 @@ DATA_DIR = BASE_DIR / "data"
 CORPUS_DB_PATH = DATA_DIR / "frequency_corpus.db"
 AUDIT_JSON_PATH = DATA_DIR / "vocab_corpus_audit.json"
 PROMOTE_BACKUP_DIR = DATA_DIR / "backups" / "promote"
+LLM_CACHE_PATH = DATA_DIR / "llm_cache.db"
+COLLOCATION_CACHE_DAYS = 90
 
 lemmatizer = WordNetLemmatizer()
 
@@ -203,6 +206,37 @@ def _write_promote_backup(req: PromoteChunkRequest, note_info: Dict[str, Any], c
     return path
 
 
+def _collocation_model() -> str:
+    # 2.5-flash(생각 켜짐) 대비 lite·생각 끔: 11.2s → 2.3s, 과금 출력 2285 → 605 토큰 (lurk 1회 측정)
+    return get_setting("COLLOCATION_MODEL", "gemini-2.5-flash-lite")
+
+
+def _cache_conn() -> sqlite3.Connection:
+    conn = sqlite3.connect(str(LLM_CACHE_PATH), timeout=5.0)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS collocations (word TEXT, model TEXT, created REAL, payload TEXT, PRIMARY KEY (word, model))"
+    )
+    return conn
+
+
+def _cache_get(word: str, model: str) -> Optional[CollocationResponse]:
+    with _cache_conn() as conn:
+        row = conn.execute("SELECT created, payload FROM collocations WHERE word = ? AND model = ?", (word.lower(), model)).fetchone()
+    if not row or time.time() - row[0] > COLLOCATION_CACHE_DAYS * 86400:
+        return None
+    res = CollocationResponse.model_validate_json(row[1])
+    res.cached = True
+    return res
+
+
+def _cache_put(word: str, model: str, res: CollocationResponse) -> None:
+    with _cache_conn() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO collocations (word, model, created, payload) VALUES (?, ?, ?, ?)",
+            (word.lower(), model, time.time(), res.model_dump_json()),
+        )
+
+
 class CorpusService:
     @staticmethod
     def get_audit_stats() -> CorpusAuditStatsResponse:
@@ -227,11 +261,17 @@ class CorpusService:
         )
 
     @staticmethod
-    def get_collocations(word: str) -> CollocationResponse:
+    def get_collocations(word: str, refresh: bool = False) -> CollocationResponse:
         """
         단어에 대해 Google 1T 통계 + Google Books Ngram 빈도 검증 + Google GenAI(Gemini)를
         결합하여 100% 구글 코퍼스 통계가 검증된 네이티브 고빈도 연어/청크 후보를 생성하고 랭킹을 매겨 반환.
         """
+        model = _collocation_model()
+        if not refresh:
+            hit = _cache_get(word, model)
+            if hit is not None:
+                return hit
+
         orig_rank, orig_tier = evaluate_expression_rank_and_tier(word)
 
         api_key = os.environ.get("GOOGLE_API_KEY")
@@ -284,11 +324,13 @@ class CorpusService:
 
         try:
             response = client.models.generate_content(
-                model="gemini-2.5-flash",
+                model=model,
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
-                    temperature=0.2
+                    temperature=0.2,
+                    # 생각(thinking) 토큰을 끈다: 응답 품질은 비슷하고 시간·과금 출력이 크게 준다
+                    thinking_config=types.ThinkingConfig(thinking_budget=0),
                 )
             )
             raw_data = json.loads(response.text, strict=False)
@@ -332,12 +374,15 @@ class CorpusService:
         # Sort candidates: Google Books Ngram frequency score descending first, then word rank ascending
         candidates.sort(key=lambda x: (-(x.frequency_score or 0.0), x.rank))
 
-        return CollocationResponse(
+        res = CollocationResponse(
             original_word=word,
             original_rank=orig_rank,
             original_tier=orig_tier,
             candidates=candidates
         )
+        if candidates:
+            _cache_put(word, model, res)  # 빈 결과는 저장하지 않는다
+        return res
 
     @staticmethod
     def promote_chunk(req: PromoteChunkRequest) -> PromoteChunkResponse:
@@ -448,6 +493,7 @@ class CorpusService:
             except Exception as link_err:
                 logger.warning(f"LinkManager indexing failed for note {req.note_id}: {link_err}")
 
+            LinkManager.invalidate_leech_cache()
             return PromoteChunkResponse(
                 success=True,
                 note_id=req.note_id,

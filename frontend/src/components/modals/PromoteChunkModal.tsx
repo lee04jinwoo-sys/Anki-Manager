@@ -59,28 +59,26 @@ export const PromoteChunkModal: React.FC<PromoteChunkModalProps> = ({
       return
     }
 
-    const loadCollocations = async () => {
-      setIsLoading(true)
-      setError(null)
-      try {
-        const res = await api.getCollocations(targetItem.word)
-        setCollocations(res)
-        if (res.candidates && res.candidates.length > 0 && res.candidates[0]) {
-          applyCandidate(res.candidates[0], 0)
-        }
-      } catch (err) {
-        setError(
-          err instanceof Error
-            ? err.message
-            : '고빈도 청크 후보를 탐색하는 중 오류가 발생했습니다.',
-        )
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    loadCollocations()
+    loadCollocations(false)
   }, [isOpen, targetItem])
+
+  // refresh=true 면 저장된 후보를 무시하고 Gemini로 새로 만든다
+  const loadCollocations = async (refresh: boolean) => {
+    if (!targetItem) return
+    setIsLoading(true)
+    setError(null)
+    try {
+      const res = await api.getCollocations(targetItem.word, refresh)
+      setCollocations(res)
+      if (res.candidates && res.candidates.length > 0 && res.candidates[0]) {
+        applyCandidate(res.candidates[0], 0)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '고빈도 청크 후보를 탐색하는 중 오류가 발생했습니다.')
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   const applyCandidate = (cand: CollocationCandidate, idx: number) => {
     setSelectedIndex(idx)
@@ -226,9 +224,20 @@ export const PromoteChunkModal: React.FC<PromoteChunkModalProps> = ({
           {/* Candidate Selection Cards */}
           {!isLoading && collocations && collocations.candidates.length > 0 && (
             <div>
-              <label className="block text-xs font-medium text-neutral-400 mb-2">
-                추천된 고빈도 연어 / 청크 후보 (클릭하여 선택)
-              </label>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <label className="block text-xs font-medium text-neutral-400">
+                  추천된 고빈도 연어 / 청크 후보 (클릭하여 선택)
+                  {collocations.cached && <span className="ml-2 text-neutral-500">· 저장된 후보</span>}
+                </label>
+                <button
+                  type="button"
+                  onClick={() => loadCollocations(true)}
+                  className="rounded-md border border-neutral-700 px-2 py-0.5 text-[11px] text-neutral-400 hover:bg-neutral-800"
+                  title="저장된 후보를 무시하고 새로 생성 (Gemini 호출)"
+                >
+                  다시 생성
+                </button>
+              </div>
               <div className="grid grid-cols-1 gap-2.5">
                 {collocations.candidates.map((cand, idx) => {
                   const isSelected = selectedIndex === idx

@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from core.batch_generator import BatchSentenceGenerator
+from core.link_manager import LinkManager
 from integrations.anki_connect import AnkiConnector
 
 Action = Literal["review_today", "reset", "examples", "promote", "skip"]
@@ -78,6 +79,14 @@ def _backup(cards: list[int], items: list[dict[str, Any]]) -> Path:
 
 def apply_actions(items: list[dict[str, Any]], emit=lambda msg, progress=None: None, check_cancel=lambda: None) -> dict[str, int]:
     """review_today / reset / examples 를 실행한다. promote 는 건너뛴다 (화면에서 개별 처리)."""
+    try:
+        return _apply(items, emit, check_cancel)
+    finally:
+        # 오답 수·연결 수가 바뀌었으니 Leech 목록 캐시를 비운다
+        LinkManager.invalidate_leech_cache()
+
+
+def _apply(items, emit, check_cancel) -> dict[str, int]:
     by_action: dict[str, list[dict[str, Any]]] = {a: [] for a in ACTIONS}
     for it in items:
         by_action[it["action"]].append(it)

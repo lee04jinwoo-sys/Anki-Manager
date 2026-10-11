@@ -23,6 +23,7 @@ class CollocationResponse(BaseModel):
     original_rank: int
     original_tier: str
     candidates: List[CollocationCandidate]
+    cached: bool = False  # 저장된 후보를 재사용했으면 True (Gemini 호출 없음)
 
 
 class PromoteChunkRequest(BaseModel):

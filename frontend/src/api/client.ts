@@ -124,9 +124,9 @@ export const api = {
   // Corpus & Chunk Promotion
   getCorpusAuditStats: (): Promise<import('../types/corpus').CorpusAuditStats> =>
     request<import('../types/corpus').CorpusAuditStats>('/corpus/audit-stats'),
-  getCollocations: (word: string): Promise<import('../types/corpus').CollocationResponse> =>
+  getCollocations: (word: string, refresh = false): Promise<import('../types/corpus').CollocationResponse> =>
     request<import('../types/corpus').CollocationResponse>(
-      `/corpus/collocations?word=${encodeURIComponent(word)}`,
+      `/corpus/collocations?word=${encodeURIComponent(word)}${refresh ? '&refresh=true' : ''}`,
     ),
   promoteChunk: (
     req: import('../types/corpus').PromoteChunkRequest,
