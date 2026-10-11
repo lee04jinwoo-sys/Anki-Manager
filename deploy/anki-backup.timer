@@ -1,0 +1,9 @@
+[Unit]
+Description=Snapshot Anki Manager data/ daily at 06:30 UTC (before nightly maintenance)
+
+[Timer]
+OnCalendar=*-*-* 06:30:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target
