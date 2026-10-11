@@ -5,6 +5,7 @@ import sqlite3
 import html
 import datetime
 import functools
+import logging
 import time
 from pathlib import Path
 from collections import defaultdict
@@ -14,6 +15,8 @@ from config import (
     DECK_VOCAB, MODEL_VOCAB, DECK_SENTENCE, MODEL_SENTENCE, MODEL_GRAMMAR
 )
 from integrations.anki_connect import AnkiConnector
+
+logger = logging.getLogger("LinkManager")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
@@ -791,6 +794,41 @@ class LinkManager:
         parts.append(clean_new)
         new_val = " ||| ".join(parts)
         AnkiConnector.update_note_fields(vocab_note_id, {"예문": new_val})
+
+    @classmethod
+    def remove_note(cls, note_id: int) -> None:
+        """지운 노트를 색인에서 뺀다 (/undo). 문장이면 등록 때 단어 카드 '예문'에 덧붙인 그 문장도 되돌린다."""
+        init_db()
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            rows = cursor.execute(
+                "SELECT vocab_note_id, sentence_text FROM links WHERE sentence_note_id = ?", (note_id,)
+            ).fetchall()
+            for row in rows:
+                try:
+                    cls._remove_sentence_from_vocab_note(row["vocab_note_id"], row["sentence_text"])
+                except Exception as e:
+                    logger.warning(f"예문 되돌리기 실패 (vocab {row['vocab_note_id']}): {e}")
+                cursor.execute(
+                    "UPDATE vocab_cache SET link_count = MAX(link_count - 1, 0) WHERE note_id = ?",
+                    (row["vocab_note_id"],),
+                )
+            cursor.execute("DELETE FROM links WHERE sentence_note_id = ?", (note_id,))
+            cursor.execute("DELETE FROM links WHERE vocab_note_id = ?", (note_id,))
+            cursor.execute("DELETE FROM vocab_cache WHERE note_id = ?", (note_id,))
+            conn.commit()
+
+    @classmethod
+    def _remove_sentence_from_vocab_note(cls, vocab_note_id: int, sentence: str) -> None:
+        target = clean_text(sentence).strip().lower()
+        notes_info = AnkiConnector.get_notes_info([vocab_note_id])
+        if not target or not notes_info or not notes_info[0]:
+            return
+        curr = notes_info[0].get("fields", {}).get("예문", {}).get("value", "")
+        parts = [p.strip() for p in curr.split("|||") if p.strip()]
+        kept = [p for p in parts if clean_text(p).strip().lower() != target]
+        if len(kept) != len(parts):
+            AnkiConnector.update_note_fields(vocab_note_id, {"예문": " ||| ".join(kept)})
 
     @classmethod
     def index_single_vocab(cls, vocab_note_id: int, vocab_word: str, meaning: str = "", pos: str = ""):
