@@ -61,7 +61,8 @@ def handle_text(text, chat_id, allowed_chat_id, post_backend, on_added=None):
         logger.warning("허락되지 않은 채팅 %s 무시", chat_id)
         return None
     parsed = classify(text)
-    if parsed is None:
+    # /start 같은 텔레그램 명령은 카드로 만들지 않는다
+    if parsed is None or parsed[1].startswith("/"):
         return USAGE
     kind, body = parsed
     path, payload = (("/api/cards/sentence", {"sentence": body}) if kind == "sentence"

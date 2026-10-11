@@ -159,3 +159,13 @@ def test_on_added_failure_still_returns_success_reply():
     reply = ti.handle_text("x", ALLOWED, ALLOWED, backend, on_added=broken)
 
     assert reply.startswith("✅")
+
+
+@pytest.mark.parametrize("text", ["/start", "/help", "/start@ankimanager_bot"])
+def test_commands_get_usage_without_backend_call(text):
+    backend = FakeBackend({"success": True})
+
+    reply = ti.handle_text(text, ALLOWED, ALLOWED, backend)
+
+    assert backend.calls == []
+    assert reply == ti.USAGE
