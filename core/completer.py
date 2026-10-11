@@ -38,6 +38,7 @@ def normalize_vocab_placeholders(word: str) -> str:
 
 load_dotenv()
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
+FIELD_BATCH_SIZE = 10  # 빈 필드 채우기: Gemini 1회 요청당 노트 수
 
 from config import (
     NOTE_COMPLETOR_MODEL, NOTE_COMPLETOR_SYS_INSTRUCT, NOTE_COMPLETOR_MAX_WORKERS,
@@ -211,6 +212,43 @@ class NoteCompleter:
             )
         return self._generate(prompt)
 
+    def complete_fields_batch(self, model_name, notes):
+        """노트 여러 개의 누락 필드를 한 번에 채운다 (시스템 프롬프트·지시문 반복을 줄인다).
+
+        notes: [{"id", "main", "current", "missing"}] → {id: {필드: 값}} (응답에 없는 노트는 빠진다)
+        """
+        if "Grammar" in model_name:
+            guide = "해설은 자연스러운 한국어 번역, 설명은 정답의 논리적 이유, 보기1~3은 정답과 겹치지 않는 매력적인 오답."
+        elif "Sentence" in model_name:
+            guide = "해설은 문장의 자연스러운 한국어 번역만 직접 작성."
+        else:
+            guide = "지침 규칙(뜻·품사·예문·설명 형식)을 그대로 따른다."
+        payload = [{"id": str(n["id"]), "main": n["main"], "current": n["current"], "missing": n["missing"]} for n in notes]
+        prompt = (
+            f"모델: {model_name}\n"
+            f"아래 노트마다 'missing'에 적힌 필드만 채우세요. {guide}\n"
+            "각 노트의 id를 문자열 그대로 돌려주고, missing에 없는 필드는 쓰지 마세요.\n"
+            '반환 형식: {"notes": [{"id": "<id>", "<필드명>": "<값>"}]}\n\n'
+            f"[노트]:\n{json.dumps(payload, ensure_ascii=False)}"
+        )
+        response = self.client.models.generate_content(
+            model=self.model_id,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=self.sys_instruct,
+                response_mime_type="application/json",
+                temperature=GEMINI_DEFAULT_TEMPERATURE,
+            ),
+        )
+        data = json.loads(response.text, strict=False)
+        items = data.get("notes", []) if isinstance(data, dict) else data
+        out = {}
+        for it in items or []:
+            if isinstance(it, dict) and "id" in it:
+                fields = {k: html.unescape(v) if isinstance(v, str) else v for k, v in it.items() if k != "id"}
+                out[str(it["id"])] = fields
+        return out
+
 def run_universal_field_completion(pbar=None):
     from config import MODEL_SENTENCE, MODEL_VOCAB, MODEL_GRAMMAR
     
@@ -283,34 +321,56 @@ def run_universal_field_completion(pbar=None):
                     if not missing_fields: # 더 이상 채울 필드가 없으면 종료
                         return True
             
-            _print(pbar, f"⏳ 보강 중: {main_val[:30]}... ({', '.join(missing_fields)} 필드)")
-            
             current_data = {f: fields[f] for f in config["all_fields"] if fields.get(f, "").strip()}
-            
-            result = completer.complete_fields(model_name, main_val, current_data, missing_fields)
+            pending.append({"id": note_id, "main": main_val, "current": current_data, "missing": missing_fields})
+            return False
+
+        def write_updates(item, result):
             # AI가 기존 필드(단어·정답 등)까지 돌려줘도 비어 있던 필드에만 쓴다.
             updates = {
                 k: v for k, v in (result or {}).items()
-                if k in missing_fields and isinstance(v, str) and v.strip()
+                if k in item["missing"] and isinstance(v, str) and v.strip()
             }
             if updates:
-                AnkiConnector.update_note_fields(note_id, updates)
-                _print(pbar, f"✅ 보강 완료: {main_val[:30]} ({', '.join(updates)})")
+                AnkiConnector.update_note_fields(item["id"], updates)
+                _print(pbar, f"✅ 보강 완료: {item['main'][:30]} ({', '.join(updates)})")
                 return True
             return False
 
-        def safe_process_note(n):
+        def process_chunk(chunk):
+            """10개를 한 번에 요청하고, 응답에서 빠졌거나 묶음이 실패한 노트만 한 개씩 다시 요청한다."""
             try:
-                return process_note(n)
+                answers = {str(k): v for k, v in (completer.complete_fields_batch(model_name, chunk) or {}).items()}
+            except Exception as e:
+                _print(pbar, f"⚠️ 묶음 보강 실패, 개별 요청으로 재시도: {e}")
+                answers = {}
+            done = 0
+            for item in chunk:
+                try:
+                    result = answers.get(str(item["id"]))
+                    if result is None:
+                        result = completer.complete_fields(model_name, item["main"], item["current"], item["missing"])
+                    done += write_updates(item, result)
+                except Exception as e:
+                    failed.append(item["id"])
+                    _print(pbar, f"❌ 보강 실패 (note {item['id']}): {e}")
+            return done
+
+        failed = []
+        pending = []
+        for n in notes_info:
+            try:
+                total_updated += process_note(n)
             except Exception as e:
                 failed.append(n.get('noteId'))
                 _print(pbar, f"❌ 보강 실패 (note {n.get('noteId')}): {e}")
-                return False
 
-        failed = []
+        size = FIELD_BATCH_SIZE
+        chunks = [pending[i:i + size] for i in range(0, len(pending), size)]
+        if chunks:
+            _print(pbar, f"⏳ AI 보강: {len(pending)}개 노트, {len(chunks)}번 요청")
         with concurrent.futures.ThreadPoolExecutor(max_workers=NOTE_COMPLETOR_MAX_WORKERS) as ex:
-            results = list(ex.map(safe_process_note, notes_info))
-            total_updated += sum(results)
+            total_updated += sum(ex.map(process_chunk, chunks))
         if failed:
             _print(pbar, f"⚠️ {model_name}: {len(failed)}개 노트 보강 실패 (note id: {failed[:20]})")
 
