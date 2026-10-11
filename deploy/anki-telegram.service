@@ -1,0 +1,19 @@
+[Unit]
+Description=Telegram intake: messages become Anki cards via the Anki Manager backend
+Wants=anki-manager.service
+After=anki-manager.service network-online.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/anki-manager
+# TELEGRAM_BOT_TOKEN (secret, written by the user) and TELEGRAM_ALLOWED_CHAT_ID
+EnvironmentFile=/home/ubuntu/anki-manager/.env.telegram
+EnvironmentFile=/home/ubuntu/anki-manager/telegram_chat.env
+ExecStart=/home/ubuntu/anki-manager/.venv/bin/python -m integrations.telegram_intake
+Restart=always
+RestartSec=10
+MemoryMax=300M
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

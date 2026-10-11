@@ -1,0 +1,14 @@
+[Unit]
+Description=Sync the server Anki with AnkiWeb (alerts on Telegram when it fails)
+Requires=anki.service
+After=anki.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/anki-manager
+EnvironmentFile=-/home/ubuntu/anki-manager/.env.telegram
+EnvironmentFile=-/home/ubuntu/anki-manager/telegram_chat.env
+ExecStart=/home/ubuntu/anki-manager/.venv/bin/python -m integrations.anki_sync
+TimeoutStartSec=600
+Nice=10

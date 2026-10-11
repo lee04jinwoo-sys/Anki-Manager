@@ -1,0 +1,17 @@
+[Unit]
+Description=Anki Manager web backend (127.0.0.1:8001, open via SSH tunnel)
+Wants=anki.service
+After=anki.service network-online.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/anki-manager
+# .env (GOOGLE_API_KEY) is read by load_dotenv from the project root
+ExecStart=/home/ubuntu/anki-manager/.venv/bin/uvicorn server:app --host 127.0.0.1 --port 8001
+Restart=on-failure
+RestartSec=10
+MemoryMax=1500M
+Nice=10
+
+[Install]
+WantedBy=multi-user.target
