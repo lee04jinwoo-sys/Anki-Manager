@@ -53,8 +53,9 @@ class AnkiTTSFiller:
             # 고유한 파일명 생성 (uuid 추가)
             filename = f"anki_gcp_{selected_voice_name}_{uuid.uuid4().hex[:8]}.mp3"
             b64_audio = base64.b64encode(response.audio_content).decode('utf-8')
-            AnkiConnector.invoke("storeMediaFile", filename=filename, data=b64_audio)
-            return f"[sound:{filename}]", selected_voice_name
+            # Anki may store under another name (the server's Linux Anki lowercases it): tag what it returns.
+            stored = AnkiConnector.invoke("storeMediaFile", filename=filename, data=b64_audio) or filename
+            return f"[sound:{stored}]", selected_voice_name
         except Exception as e:
             _print(pbar, f"❌ GCP TTS 에러: {e}")
             return "", "Error"
@@ -71,13 +72,13 @@ class AnkiTTSFiller:
             tts.save(path)
             with open(path, 'rb') as f:
                 b64_audio = base64.b64encode(f.read()).decode('utf-8')
-            AnkiConnector.invoke("storeMediaFile", filename=filename, data=b64_audio)
+            stored = AnkiConnector.invoke("storeMediaFile", filename=filename, data=b64_audio) or filename
             
             # 임시 파일 삭제
             if os.path.exists(path):
                 os.remove(path)
                 
-            return f"[sound:{filename}]", "gTTS"
+            return f"[sound:{stored}]", "gTTS"
         except Exception as e:
             _print(pbar, f"❌ gTTS 에러: {e}")
             return "", "Error"
