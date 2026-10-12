@@ -99,3 +99,13 @@ def test_prune_keeps_recent_and_ignores_foreign_dirs(layout):
 def test_missing_data_dir_raises(tmp_path):
     with pytest.raises(FileNotFoundError):
         db.snapshot(tmp_path / "nope", tmp_path / "snapshots", D1)
+
+
+def test_cli_args_pick_data_dir_root_and_keep(layout, monkeypatch):
+    """가계부 등 다른 앱의 data/도 같은 코드로 백업한다 (2026-10-12)."""
+    data, root = layout
+    monkeypatch.setattr(db, "_notify_failure", lambda text: None)
+    for i in range(3):
+        monkeypatch.setattr(db, "_today", lambda i=i: D1 + datetime.timedelta(days=i))
+        db.main(["--data", str(data), "--root", str(root), "--keep", "2"])
+    assert sorted(p.name for p in root.iterdir()) == ["2026-10-13", "2026-10-14"]

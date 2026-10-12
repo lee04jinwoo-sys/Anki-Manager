@@ -104,17 +104,32 @@ def prune(root, keep=KEEP):
         logger.info("오래된 스냅샷 삭제: %s", old.name)
 
 
-def main():
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+def _today():
+    return datetime.date.today()
+
+
+def _notify_failure(text):
     from integrations import anki_sync
+    anki_sync.telegram_notifier()(text)
+
+
+def main(argv=None):
+    """인자 없이 부르면 Anki Manager data/. 다른 앱은 --data/--root/--keep으로 지정한다."""
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--data", type=Path, default=DATA_DIR)
+    ap.add_argument("--root", type=Path, default=BACKUP_ROOT)
+    ap.add_argument("--keep", type=int, default=KEEP)
+    args = ap.parse_args(argv)
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     try:
-        snap = snapshot(DATA_DIR, BACKUP_ROOT, datetime.date.today())
-        prune(BACKUP_ROOT, KEEP)
+        snap = snapshot(args.data, args.root, _today())
+        prune(args.root, args.keep)
         logger.info("스냅샷 완료: %s", snap)
     except Exception as e:
         logger.exception("data/ 백업 실패")
         try:
-            anki_sync.telegram_notifier()(f"⚠️ Anki Manager data/ 백업 실패: {type(e).__name__}: {str(e)[:200]}")
+            _notify_failure(f"⚠️ {args.data} 백업 실패: {type(e).__name__}: {str(e)[:200]}")
         except Exception as ne:
             logger.warning("백업 실패 알림 전송 실패: %s", ne)
         raise
