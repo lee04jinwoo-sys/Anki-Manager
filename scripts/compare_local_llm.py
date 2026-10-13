@@ -50,9 +50,9 @@ def run_gemini(prompt):
 
 def run_local(prompt, url):
     t = time.time()
-    r = requests.post(f"{url}/v1/chat/completions", timeout=3600, json=dict(
+    r = requests.post(f"{url}/v1/chat/completions", timeout=1800, json=dict(
         messages=[{"role": "system", "content": BATCH_SENTENCE_PROMPT}, {"role": "user", "content": prompt}],
-        temperature=0.3, response_format={"type": "json_object"}))
+        temperature=0.3, max_tokens=1500, response_format={"type": "json_object"}))
     r.raise_for_status()
     d = r.json()
     return dict(seconds=round(time.time() - t, 1), raw=d["choices"][0]["message"]["content"],

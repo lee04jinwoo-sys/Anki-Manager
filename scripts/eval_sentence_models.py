@@ -9,7 +9,8 @@ Anki·links.db에 쓰지 않는다 (links.db는 읽기 전용 URI로 연다).
 - 기호: 문장에 V-ing / V / 단독 대문자 A·B·C 플레이스홀더가 남았는지
 - 번역: 한글이 있는지
 
-실행 (서버, ~/anki-manager에서, llama-server가 --local-url에 떠 있어야 함):
+실행 (서버, ~/anki-manager에서, llama-server가 --local-url에 떠 있어야 함. --cache-ram 0으로 띄울 것:
+    이전 요청 캐시가 RAM에 쌓여 12B가 메모리 상한에 걸린 적 있음, 2026-10-13):
     .venv/bin/python scripts/eval_sentence_models.py --n 100 --exclude-from ~/llm/compare.json --out ~/llm/eval100
 """
 import argparse
