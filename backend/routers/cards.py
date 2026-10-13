@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException, status
 from backend.schemas.cards import (
     CardStatusResponse,
     SentenceCreateRequest, SentenceBulkCreateRequest,
-    VocabCreateRequest, VocabBulkCreateRequest,
+    VocabCreateRequest, VocabBulkCreateRequest, GrammarCreateRequest,
     CardResponse, BulkCardResponse
 )
 from backend.services import card_service
@@ -60,4 +60,13 @@ def bulk_add_vocabs(req: VocabBulkCreateRequest) -> BulkCardResponse:
     res = card_service.create_bulk_vocabs(req)
     if not res.success:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=res.error or "Failed to bulk add vocab cards")
+    return res
+
+
+@router.post("/grammar", response_model=CardResponse)
+def add_grammar(req: GrammarCreateRequest) -> CardResponse:
+    """문법 객관식 카드 등록 (정답 빈칸 검증, 누락 필드 보강, 오디오, 링크 인덱싱)"""
+    res = card_service.create_grammar_card(req)
+    if not res.success and not res.duplicate:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=res.error or "Failed to add grammar card")
     return res

@@ -44,6 +44,15 @@ class VocabBulkCreateRequest(BaseModel):
     auto_enrich: bool = False
     generate_audio: bool = True
 
+class GrammarCreateRequest(BaseModel):
+    sentence: str                      # 완성 문장 (정답이 들어간 형태)
+    answer: str                        # 문장 속에서 빈칸이 될 부분
+    distractors: List[str] = Field(default_factory=list)  # 주어진 오답 (예: 학습자가 실제로 쓴 틀린 형태), 최대 3개
+    translation: Optional[str] = ""    # 해설. 비면 생성
+    explanation: Optional[str] = ""    # 설명. 비면 생성
+    auto_enrich: bool = True
+    generate_audio: bool = True
+
 class CardResponse(BaseModel):
     success: bool
     note_id: Optional[int] = None

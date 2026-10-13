@@ -11,7 +11,7 @@ from typing import List, Dict, Any, Optional
 
 import gtts
 from config import (
-    ANKI_URL, DECK_SENTENCE, MODEL_SENTENCE, DECK_VOCAB, MODEL_VOCAB,
+    ANKI_URL, DECK_SENTENCE, MODEL_SENTENCE, DECK_VOCAB, MODEL_VOCAB, DECK_GRAMMAR, MODEL_GRAMMAR,
     AUDIO_ADDER_MAX_WORKERS
 )
 from integrations.anki_connect import AnkiConnector
@@ -20,7 +20,7 @@ from core.completer import NoteCompleter, normalize_vocab_placeholders
 from core.link_manager import LinkManager
 from backend.schemas.cards import (
     SentenceCreateRequest, SentenceBulkCreateRequest,
-    VocabCreateRequest, VocabBulkCreateRequest,
+    VocabCreateRequest, VocabBulkCreateRequest, GrammarCreateRequest,
     CardResponse, BulkCardResponse, CardStatusResponse
 )
 
@@ -402,3 +402,82 @@ def create_bulk_vocabs(req: VocabBulkCreateRequest) -> BulkCardResponse:
             logger.error(f"Error adding vocab chunk: {chunk_err}")
 
     return BulkCardResponse(success=True, count=total_success_count, total=len(req.items), skipped=total_skipped)
+
+
+GRAMMAR_OPTION_FIELDS = ["보기1", "보기2", "보기3"]
+
+
+def _answer_occurrences(sentence: str, answer: str) -> int:
+    """English Grammar 앞면 템플릿과 같은 규칙(\\b정답\\b, 대소문자 무시)으로 빈칸이 몇 곳 생기는지 센다."""
+    if not answer:
+        return 0
+    return len(re.findall(r"\b" + re.escape(answer) + r"\b", sentence, flags=re.IGNORECASE))
+
+
+def create_grammar_card(req: GrammarCreateRequest) -> CardResponse:
+    """문법 객관식 카드: 문장 속 정답이 빈칸이 되고, 보기1~3 + 정답 네 개가 선택지가 된다."""
+    sentence = req.sentence.strip()
+    answer = (req.answer or "").strip()
+    if not sentence:
+        return CardResponse(success=False, error="Sentence cannot be empty")
+    hits = _answer_occurrences(sentence, answer)
+    if hits == 0:
+        return CardResponse(success=False, error=f"정답 '{answer}'이(가) 문장 안에 단어 단위로 없습니다. 빈칸을 만들 수 없습니다.")
+    if hits > 1:
+        return CardResponse(success=False, error=f"정답 '{answer}'이(가) 문장에 {hits}번 나옵니다. 빈칸이 한 번만 생기도록 정답을 더 길게 잡으세요.")
+
+    # 주어진 오답: 앞뒤 공백 제거, 정답·서로와 겹치는 것 제거, 최대 3개
+    seen = {answer.lower()}
+    distractors = []
+    for d in req.distractors:
+        d = (d or "").strip()
+        if d and d.lower() not in seen:
+            seen.add(d.lower())
+            distractors.append(d)
+    fields = {"문장": sentence, "정답": answer, "해설": (req.translation or "").strip(),
+              "설명": (req.explanation or "").strip(), "소리": ""}
+    for name, value in zip(GRAMMAR_OPTION_FIELDS, distractors[:3]):
+        fields[name] = value
+
+    missing = [k for k in ["해설", "설명", *GRAMMAR_OPTION_FIELDS] if not fields.get(k)]
+    if missing and req.auto_enrich:
+        current = {k: v for k, v in fields.items() if v and k != "소리"}
+        try:
+            # complete_fields_batch는 반환 형식을 명시한다 (complete_fields는 시스템 지침의 다른 스키마로 답한다)
+            generated = NoteCompleter().complete_fields_batch(
+                MODEL_GRAMMAR, [{"id": 1, "main": sentence, "current": current, "missing": missing}]).get("1") or {}
+        except Exception as e:
+            logger.warning(f"Grammar enrichment failed: {e}")
+            generated = {}
+        for k in missing:
+            v = generated.get(k)
+            if isinstance(v, str) and v.strip():
+                fields[k] = html.unescape(v.strip())
+
+    options = [fields.get(k, "") for k in GRAMMAR_OPTION_FIELDS] + [answer]
+    if any(not o for o in options) or len({o.lower() for o in options}) != 4:
+        return CardResponse(success=False, error=f"선택지 네 개가 서로 다르게 채워지지 않았습니다: {options}")
+    if not fields["해설"] or not fields["설명"]:
+        return CardResponse(success=False, error="해설 또는 설명을 만들지 못했습니다.")
+
+    data = {k: v for k, v in fields.items() if k != "소리"}
+    try:
+        note_id = AnkiConnector.add_note(
+            deck_name=DECK_GRAMMAR,
+            model_name=MODEL_GRAMMAR,
+            fields=fields,
+            options={"allowDuplicate": False}
+        )
+    except Exception as e:
+        if "duplicate" in str(e).lower():
+            return CardResponse(success=True, duplicate=True, data=data)
+        logger.error(f"Error creating grammar card: {e}")
+        return CardResponse(success=False, error=str(e))
+
+    if req.generate_audio and note_id:
+        queue_background_audio(note_id, sentence, is_sentence=True)
+    try:
+        LinkManager.index_single_sentence(note_id, sentence)
+    except Exception as link_err:
+        logger.warning(f"Incremental link indexing warning: {link_err}")
+    return CardResponse(success=True, note_id=note_id, data=data)
