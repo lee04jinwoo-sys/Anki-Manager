@@ -12,7 +12,7 @@ from typing import List, Dict, Any, Optional
 import gtts
 from config import (
     ANKI_URL, DECK_SENTENCE, MODEL_SENTENCE, DECK_VOCAB, MODEL_VOCAB, DECK_GRAMMAR, MODEL_GRAMMAR,
-    AUDIO_ADDER_MAX_WORKERS
+    AUDIO_ADDER_MAX_WORKERS, NOTE_TYPES_CONFIG
 )
 from integrations.anki_connect import AnkiConnector
 from integrations.audio import AnkiTTSFiller
@@ -480,4 +480,17 @@ def create_grammar_card(req: GrammarCreateRequest) -> CardResponse:
         LinkManager.index_single_sentence(note_id, sentence)
     except Exception as link_err:
         logger.warning(f"Incremental link indexing warning: {link_err}")
+    _assign_card_decks(note_id, MODEL_GRAMMAR)
     return CardResponse(success=True, note_id=note_id, data=data)
+
+
+def _assign_card_decks(note_id: int, model_name: str) -> None:
+    """addNote는 모든 카드를 한 덱에 넣는다. config의 deck_assignment대로 바로 옮긴다 (정리 작업과 같은 규칙)."""
+    for rule in NOTE_TYPES_CONFIG.get(model_name, {}).get("deck_assignment", []):
+        try:
+            cards = AnkiConnector.invoke(
+                "findCards", query=f'nid:{note_id} card:"{rule["card"]}" -deck:"{rule["target"]}"')
+            if cards:
+                AnkiConnector.invoke("changeDeck", cards=cards, deck=rule["target"])
+        except Exception as e:
+            logger.warning(f"Deck assignment for note {note_id} ({rule}) failed: {e}")

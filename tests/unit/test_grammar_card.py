@@ -19,6 +19,12 @@ def anki(monkeypatch):
     state = {"added": [], "queued": [], "indexed": [], "existing": set(), "completer_calls": []}
 
     def invoke(action, **params):
+        if action == "findCards":
+            state.setdefault("find_queries", []).append(params["query"])
+            return [556] if 'card:"Card 3"' in params["query"] else []
+        if action == "changeDeck":
+            state.setdefault("moved", []).append((params["cards"], params["deck"]))
+            return None
         if action == "addNote":
             note = params["note"]
             if note["fields"]["문장"] in state["existing"]:
@@ -106,3 +112,11 @@ def test_duplicate_sentence(anki):
         sentence=SENTENCE, answer="meeting", distractors=["meet"]))
     assert res.success and res.duplicate
     assert anki["queued"] == []
+
+
+def test_cards_go_to_their_configured_decks_right_away(anki):
+    # English Grammar: Card 1 -> Grammar deck, Card 3 -> Sentence deck (config deck_assignment).
+    # addNote puts every card in one deck; the organizer used to fix it only when run by hand.
+    card_service.create_grammar_card(GrammarCreateRequest(sentence=SENTENCE, answer="meeting", distractors=["meet"]))
+    assert anki["moved"] == [([556], "1. Language::1.1. English::Sentence")]
+    assert all("nid:555" in q for q in anki["find_queries"])
