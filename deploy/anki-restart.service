@@ -1,0 +1,6 @@
+[Unit]
+Description=Restart Anki desktop service to prevent memory leaks
+
+[Service]
+Type=oneshot
+ExecStart=/bin/systemctl try-restart anki.service

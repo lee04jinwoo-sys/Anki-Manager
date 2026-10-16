@@ -1,0 +1,9 @@
+[Unit]
+Description=Daily restart of anki.service at 04:00 Toronto time
+
+[Timer]
+OnCalendar=*-*-* 04:00:00 America/Toronto
+Persistent=true
+
+[Install]
+WantedBy=timers.target
