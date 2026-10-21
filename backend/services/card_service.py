@@ -307,11 +307,15 @@ def create_vocab_card(req: VocabCreateRequest) -> CardResponse:
         "소리": ""
     }
 
+    from backend.services.corpus_service import evaluate_expression_rank_and_tier
+    _, freq_tier = evaluate_expression_rank_and_tier(norm_word)
+
     try:
         note_id = AnkiConnector.add_note(
             deck_name=DECK_VOCAB,
             model_name=MODEL_VOCAB,
             fields=fields,
+            tags=[freq_tier],
             options={"allowDuplicate": False}
         )
 
@@ -366,6 +370,9 @@ def create_bulk_vocabs(req: VocabBulkCreateRequest) -> BulkCardResponse:
             example = clean_vocab_example(item.example.strip() if item.example else "")
             explanation = item.explanation.strip() if item.explanation else ""
 
+            from backend.services.corpus_service import evaluate_expression_rank_and_tier
+            _, freq_tier = evaluate_expression_rank_and_tier(norm_word)
+
             chunk_payload.append({
                 "deckName": DECK_VOCAB,
                 "modelName": MODEL_VOCAB,
@@ -378,6 +385,7 @@ def create_bulk_vocabs(req: VocabBulkCreateRequest) -> BulkCardResponse:
                     "설명": explanation,
                     "소리": ""
                 },
+                "tags": [freq_tier],
                 "options": {"allowDuplicate": False}
             })
             raw_items.append((norm_word, meaning, pos))

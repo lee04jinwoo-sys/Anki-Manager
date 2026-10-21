@@ -443,10 +443,10 @@ class LinkManager:
 
             leech_count = 0
             try:
-                # 단어(노트) 단위: 카드가 2장인 단어를 두 번 세지 않는다
+                # 단어(노트) 단위: 카드가 2장인 단어를 두 번 세지 않는다 (학술·희귀 태그 제외)
                 leech_notes = AnkiConnector.invoke(
                     "findNotes",
-                    query=f'note:"{MODEL_VOCAB}" (prop:ease<=1.3 OR prop:lapses>=4) -is:suspended'
+                    query=f'note:"{MODEL_VOCAB}" (prop:ease<=1.3 OR prop:lapses>=4) -is:suspended -tag:freq::tier4_academic -tag:freq::tier5_rare'
                 ) or []
                 # 처리했고 아직 재발하지 않은 단어는 뺀다 (목록과 같은 기준)
                 from backend.services import leech_history
@@ -489,7 +489,10 @@ class LinkManager:
         # Handle leech filter mode
         if filter_mode == "leech":
             try:
-                anki_q = f'note:"{MODEL_VOCAB}" (prop:ease<=1.3 OR prop:lapses>=4) -is:suspended'
+                anki_q = (
+                    f'note:"{MODEL_VOCAB}" (prop:ease<=1.3 OR prop:lapses>=4) '
+                    f'-is:suspended -tag:freq::tier4_academic -tag:freq::tier5_rare'
+                )
                 if search:
                     anki_q += f' "{search}"'
                 cached = _leech_cache.get(anki_q)
@@ -694,14 +697,18 @@ class LinkManager:
 
     @classmethod
     def get_worst_leech_unlinked_vocab(cls, count: int = 20) -> List[Dict[str, Any]]:
-        """미연결(link_count = 0) 단어 중 가장 많이 틀린(Lapses 많은 순) 단어 N개 추출"""
+        """미연결(link_count = 0) 단어 중 가장 많이 틀린(Lapses 많은 순) 단어 N개 추출 (학술·희귀 제외)"""
         init_db()
         from integrations.anki_connect import AnkiConnector
+        from backend.services.corpus_service import is_leech_target_word
 
         card_lapses = {}
         try:
-            # lapses 높은 순 카드 검색 (prop:lapses>=3)
-            leech_cards = AnkiConnector.invoke('findCards', query='note:"English Vocabulary" prop:lapses>=3')
+            # lapses 높은 순 카드 검색 (prop:lapses>=3, 학술·희귀 태그 제외)
+            leech_cards = AnkiConnector.invoke(
+                'findCards',
+                query='note:"English Vocabulary" prop:lapses>=3 -tag:freq::tier4_academic -tag:freq::tier5_rare'
+            )
             if leech_cards:
                 # 전체 카드를 보고 노트별 최대 lapses를 쓴다 (findCards 순서는 오답 수와 무관)
                 for c in AnkiConnector.invoke('cardsInfo', cards=leech_cards) or []:

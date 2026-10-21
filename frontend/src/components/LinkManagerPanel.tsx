@@ -382,7 +382,7 @@ export const LinkManagerPanel: React.FC<LinkManagerPanelProps> = ({
             { label: '등록 단어', value: stats.total_vocab.toLocaleString(), unit: '개', sub: `문장 연결 ${stats.total_links.toLocaleString()}건` },
             { label: '문장에 등장하는 단어', value: coveragePercent, unit: '%', sub: '1개 이상의 문장 카드에 등장', meter: Number(coveragePercent) },
             { label: '문장이 하나도 없는 단어', value: stats.unlinked_vocab.toLocaleString(), unit: '개', sub: '예문 생성 대상' },
-            { label: '만성 오답 단어', value: (stats.leech_count ?? 0).toLocaleString(), unit: '개', sub: 'Lapse 4회+ 또는 Ease 130% 이하' },
+            { label: '만성 오답 단어', value: (stats.leech_count ?? 0).toLocaleString(), unit: '개', sub: '필수·상용·고급 중 오답 4회+ 또는 Ease 130% 이하' },
           ].map((t) => (
             <div key={t.label} className="rounded-apple-sm border border-apple-border bg-apple-subtle/60 p-3">
               <div className="text-[11px] text-apple-secondary">{t.label}</div>

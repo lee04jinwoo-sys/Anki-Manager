@@ -464,6 +464,7 @@ def run_note_completion(sentences_data, vocab_data, pbar=None, step_points=0, in
             
     # Ensure NLTK is ready
     setup_nltk()
+    from backend.services.corpus_service import evaluate_expression_rank_and_tier
     
     for v in enriched_v:
         word = v.get('단어', '').strip()
@@ -471,6 +472,7 @@ def run_note_completion(sentences_data, vocab_data, pbar=None, step_points=0, in
         
         # Override POS with NLTK logic
         pos_tag = get_simple_pos(word)
+        _, freq_tier = evaluate_expression_rank_and_tier(word)
         
         try:
             start_time = ""
@@ -485,7 +487,7 @@ def run_note_completion(sentences_data, vocab_data, pbar=None, step_points=0, in
                 "예문": v['예문'], 
                 "설명": v['설명']
             }
-            AnkiConnector.add_note(DECK_VOCAB, MODEL_VOCAB, fields)
+            AnkiConnector.add_note(DECK_VOCAB, MODEL_VOCAB, fields, tags=[freq_tier])
             processed_vocab.append(word)
         except Exception as e:
             if "duplicate" in str(e).lower():

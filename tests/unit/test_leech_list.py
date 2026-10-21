@@ -53,3 +53,25 @@ def test_worst_leech_unlinked_uses_all_cards_and_max_lapses(fake):
         conn.commit()
     items = LinkManager.get_worst_leech_unlinked_vocab(count=2)
     assert [(i["note_id"], i["lapses"]) for i in items] == [(10, 13), (30, 8)]
+
+
+def test_leech_queries_exclude_academic_and_rare_tiers(monkeypatch, tmp_path):
+    monkeypatch.setattr(link_manager, "DB_PATH", tmp_path / "links.db")
+    init_db()
+    LinkManager.invalidate_leech_cache()
+    queries = []
+
+    def invoke(action, **p):
+        if "query" in p:
+            queries.append((action, p["query"]))
+        return []
+
+    monkeypatch.setattr(AnkiConnector, "invoke", staticmethod(invoke))
+    LinkManager.get_stats()
+    LinkManager.get_vocab_list(limit=10, offset=0, filter_mode="leech")
+    LinkManager.get_worst_leech_unlinked_vocab(count=5)
+
+    assert len(queries) == 3
+    for action, q in queries:
+        assert "-tag:freq::tier4_academic" in q
+        assert "-tag:freq::tier5_rare" in q

@@ -125,6 +125,38 @@ def evaluate_expression_rank_and_tier(raw_text: str) -> Tuple[int, str]:
     return rank, tier
 
 
+EXCLUDED_LEECH_TIERS = {"freq::tier4_academic", "freq::tier5_rare"}
+
+
+def is_leech_target_word(raw_text: str) -> bool:
+    """만성 오답(Leech) 분석 대상 단어인지 판별 (학술·희귀 등급은 제외)"""
+    _, tier = evaluate_expression_rank_and_tier(raw_text)
+    return tier not in EXCLUDED_LEECH_TIERS
+
+
+def sync_missing_freq_tags() -> int:
+    """English Vocabulary 노트 중 freq::tier* 태그가 없는 노트에 빈도 등급 태그를 일괄 부여"""
+    from config import MODEL_VOCAB
+    note_ids = AnkiConnector.invoke("findNotes", query=f'note:"{MODEL_VOCAB}" -tag:freq::*') or []
+    if not note_ids:
+        return 0
+    notes_info = AnkiConnector.invoke("notesInfo", notes=note_ids) or []
+    by_tier: Dict[str, List[int]] = {}
+    for n in notes_info:
+        if not n:
+            continue
+        nid = n.get("noteId")
+        word = n.get("fields", {}).get("단어", {}).get("value", "")
+        if nid and word:
+            _, tier = evaluate_expression_rank_and_tier(word)
+            by_tier.setdefault(tier, []).append(nid)
+    tagged_count = 0
+    for tier, nids in by_tier.items():
+        AnkiConnector.invoke("addTags", notes=nids, tags=tier)
+        tagged_count += len(nids)
+    return tagged_count
+
+
 def fetch_google_1t_tokens(word: str) -> Dict[str, List[str]]:
     """
     Google Web 1T 코퍼스 기반으로 단어 앞/뒤에 가장 빈번하게 결합하는 토큰 추출 (Datamuse API)
