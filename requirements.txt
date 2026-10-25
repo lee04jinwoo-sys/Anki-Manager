@@ -31,3 +31,4 @@ nltk==3.9.4
 # Web App
 fastapi==0.141.1
 uvicorn==0.52.3
+jieba==0.42.1

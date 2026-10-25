@@ -16,6 +16,7 @@ from config import (
     DECK_ZH_VOCAB, MODEL_ZH_VOCAB, DECK_ZH_SENTENCE, MODEL_ZH_SENTENCE
 )
 from integrations.anki_connect import AnkiConnector
+from core.zh_matcher import ChineseMatcher
 
 logger = logging.getLogger("LinkManager")
 
@@ -368,14 +369,12 @@ class LinkManager:
 
             links_to_insert = []
             vocab_counts: Dict[int, int] = {v["note_id"]: 0 for v in vocabs}
-            stop_1char = set("的了我你他在是有就不吗吧呢很들도")
+            matcher = ChineseMatcher(v["word"] for v in vocabs)
+            sentence_tokens = {s_id: matcher.tokens(s_text) for s_id, s_text in sentences_dict.items()}
 
             for v in vocabs:
-                w = v["word"]
-                if len(w) == 1 and w in stop_1char:
-                    continue
                 for s_id, s_text in sentences_dict.items():
-                    if w in s_text:
+                    if matcher.contains(v["word"], sentence_tokens[s_id]):
                         links_to_insert.append((v["note_id"], v["word"], s_id, s_text))
                         vocab_counts[v["note_id"]] += 1
 
@@ -840,13 +839,12 @@ class LinkManager:
             vocab_ids_to_increment = set()
 
             if lang == "zh":
-                stop_1char = set("的了我你他在是有就不吗吧呢很들도")
+                matcher = ChineseMatcher(row["word"] for row in vocabs)
+                tokens = matcher.tokens(cleaned_sentence)
                 for row in vocabs:
                     v_id = row["note_id"]
                     v_word = row["word"]
-                    if len(v_word) == 1 and v_word in stop_1char:
-                        continue
-                    if v_word in cleaned_sentence:
+                    if matcher.contains(v_word, tokens):
                         links_to_add.append((v_id, v_word, sentence_note_id, cleaned_sentence, lang))
                         vocab_ids_to_increment.add(v_id)
             else:
