@@ -5,6 +5,8 @@
 웹 화면과 같은 백엔드 작업(/api/organize/run)으로 돌려서 같은 작업 잠금을 쓴다.
 빈 필드 대상이 field_cap을 넘으면 그 단계는 건너뛰고 알린다 (대량 변경·비용 방지).
 채운 것이 있거나 실패했을 때만 알리고, 끝나면 AnkiWeb과 동기화한다.
+마지막으로 중국어 단어-문장 연결을 다시 스캔한다 (Anki에서 직접 넣은 중국어 카드도 연결되게).
+이 스캔은 서버의 links.db만 바꾸고 Anki에는 쓰지 않는다.
 
 실행 (systemd 타이머, 백업 뒤): .venv/bin/python -m integrations.nightly_maintenance
 """
@@ -87,6 +89,16 @@ def run(count, start, state, sync, send, sleep=time.sleep, field_cap=FIELD_CAP, 
         logger.warning("정리 후 동기화 실패: %s", e)
 
 
+def relink_chinese(scan, send):
+    """중국어 링크 전체 재스캔. 성공은 조용히, 실패는 한 번 알리고 넘어간다."""
+    try:
+        res = scan("zh")
+        logger.info("중국어 링크 재스캔: %s", res.get("data"))
+    except Exception as e:
+        logger.warning("중국어 링크 재스캔 실패: %s", e)
+        send(f"⚠️ Anki 밤 정리: 중국어 링크 재스캔 실패: {type(e).__name__}: {str(e)[:200]}")
+
+
 def _count():
     from integrations.anki_connect import AnkiConnector
     return {k: len(AnkiConnector.invoke("findNotes", query=q)) for k, q in QUERIES.items()}
@@ -104,6 +116,12 @@ def _state():
     return r.json()
 
 
+def _scan(lang):
+    r = requests.post(f"{BACKEND_URL}/api/links/scan", params={"lang": lang}, timeout=600)
+    r.raise_for_status()
+    return r.json()
+
+
 def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     logging.getLogger("urllib3").setLevel(logging.WARNING)
@@ -116,6 +134,8 @@ def main():
         logger.exception("밤 정리 실패")
         notify(f"❌ Anki 밤 정리 실패: {type(e).__name__}: {str(e)[:200]}")
         raise
+    finally:
+        relink_chinese(scan=_scan, send=notify)
 
 
 if __name__ == "__main__":

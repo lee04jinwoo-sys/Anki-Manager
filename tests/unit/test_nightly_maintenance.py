@@ -85,3 +85,39 @@ def test_timeout_is_reported():
     f = Fake({"fields": 1, "audio": 0, "pos": 0}, ZERO, states=[{"is_running": True, "status": "running"}])
     f.run(timeout_polls=3)
     assert "시간 초과" in f.sent[0]
+
+
+# --- 중국어 링크 야간 재스캔: Anki에서 직접 넣은 중국어 카드도 다음 날 연결되게 한다 ---
+
+def test_relink_chinese_scans_zh_and_stays_quiet_on_success():
+    calls, sent = [], []
+    nm.relink_chinese(scan=lambda lang: calls.append(lang) or {"success": True, "data": {"total_links": 10}},
+                      send=sent.append)
+    assert calls == ["zh"]
+    assert sent == []
+
+
+def test_relink_chinese_failure_sends_one_warning_and_does_not_raise():
+    sent = []
+
+    def boom(lang):
+        raise RuntimeError("backend down")
+
+    nm.relink_chinese(scan=boom, send=sent.append)
+    assert len(sent) == 1 and "중국어" in sent[0] and "backend down" in sent[0]
+
+
+def test_main_relinks_even_when_cleanup_fails(monkeypatch):
+    from integrations import anki_sync
+    order, sent = [], []
+    monkeypatch.setattr(anki_sync, "telegram_notifier", lambda: sent.append)
+
+    def failing_run(**kw):
+        order.append("run")
+        raise RuntimeError("cleanup broke")
+
+    monkeypatch.setattr(nm, "run", failing_run)
+    monkeypatch.setattr(nm, "relink_chinese", lambda scan, send: order.append("relink"))
+    with pytest.raises(RuntimeError):
+        nm.main()
+    assert order == ["run", "relink"]
