@@ -37,6 +37,13 @@ def get_db_connection() -> sqlite3.Connection:
     return conn
 
 
+def _ensure_lang_column(cursor: sqlite3.Cursor, table: str) -> None:
+    """lang 컬럼 이전에 만든 테이블에 컬럼을 붙인다. 기존 행은 모두 영어다."""
+    columns = {row[1] for row in cursor.execute(f"PRAGMA table_info({table})")}
+    if "lang" not in columns:
+        cursor.execute(f"ALTER TABLE {table} ADD COLUMN lang TEXT DEFAULT 'en'")
+
+
 def init_db():
     """SQLite 링크 매핑 및 캐시 테이블 초기화 (WAL 모드 적용)"""
     with get_db_connection() as conn:
@@ -59,6 +66,7 @@ def init_db():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_links_vocab_id ON links(vocab_note_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_links_sentence_id ON links(sentence_note_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_links_vocab_word ON links(vocab_word)")
+        _ensure_lang_column(cursor, "links")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_links_lang ON links(lang)")
 
         cursor.execute("""
@@ -73,6 +81,7 @@ def init_db():
             )
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_vocab_link_count ON vocab_cache(link_count)")
+        _ensure_lang_column(cursor, "vocab_cache")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_vocab_lang ON vocab_cache(lang)")
         conn.commit()
 
