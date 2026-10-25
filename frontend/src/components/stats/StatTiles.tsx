@@ -1,5 +1,6 @@
 import React from 'react'
 import type { StatsOverview } from '../../types/stats'
+import { statLabels } from '../../lib/statLabels'
 
 const fmt = (n: number) => n.toLocaleString()
 
@@ -15,11 +16,12 @@ export const StatTiles: React.FC<{ data: StatsOverview }> = ({ data }) => {
   const { today, habit, retention_30d: ret, desired_retention: target } = data
   const rate = ret.all.rate
   const gap = rate !== null && target !== null ? rate - target : null
+  const labels = statLabels(data.lang)
 
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       <Tile
-        label="오늘 리뷰 (전체 덱)"
+        label={labels.todayReviews}
         value={
           <>
             {fmt(today.reviews)}
@@ -29,7 +31,7 @@ export const StatTiles: React.FC<{ data: StatsOverview }> = ({ data }) => {
         sub={`30일 평균 ${fmt(Math.round(habit.avg_reviews_30d))}장 · ${Math.round(habit.avg_minutes_30d)}분`}
       />
       <Tile
-        label="남은 복습 (영어)"
+        label={labels.dueRemaining}
         value={
           <>
             {fmt(today.due_remaining)}
@@ -39,7 +41,7 @@ export const StatTiles: React.FC<{ data: StatsOverview }> = ({ data }) => {
         sub={`내일 ${fmt(today.due_tomorrow)}장 · 신규 대기 ${fmt(today.new_available)}장`}
       />
       <Tile
-        label="30일 정답률 (영어, 리뷰 단위)"
+        label={labels.retention30d}
         value={rate === null ? '–' : `${rate.toFixed(1)}%`}
         sub={
           <>
@@ -54,7 +56,7 @@ export const StatTiles: React.FC<{ data: StatsOverview }> = ({ data }) => {
         }
       />
       <Tile
-        label="연속 학습"
+        label={labels.streak}
         value={
           <>
             {habit.current}

@@ -3,6 +3,7 @@ import type { HeatmapDay } from '../../types/stats'
 import { buildWeeks, levelOf, levelThresholds, monthLabels } from '../../lib/heatmap'
 import { useTooltip } from './Tooltip'
 import { useWidth } from './useWidth'
+import { statLabels } from '../../lib/statLabels'
 
 const GAP = 3
 const LEFT = 22 // weekday labels
@@ -20,7 +21,12 @@ const dateLabel = (iso: string) => {
   return `${y}년 ${m}월 ${d}일 (${dow})`
 }
 
-export const Heatmap: React.FC<{ days: HeatmapDay[]; rolloverHour: number }> = ({ days, rolloverHour }) => {
+export const Heatmap: React.FC<{ days: HeatmapDay[]; rolloverHour: number; lang?: 'en' | 'zh' }> = ({
+  days,
+  rolloverHour,
+  lang,
+}) => {
+  const scopeLabel = statLabels(lang).heatmapScope
   const [showTable, setShowTable] = useState(false)
   const scroller = useRef<HTMLDivElement>(null)
   const { ref: box, width: boxWidth } = useWidth<HTMLDivElement>(900)
@@ -55,7 +61,7 @@ export const Heatmap: React.FC<{ days: HeatmapDay[]; rolloverHour: number }> = (
         <div>
           <h2 className="text-sm font-semibold text-apple-text">학습 잔디</h2>
           <p className="text-xs text-apple-secondary">
-            최근 1년 전체 덱 리뷰 {total.toLocaleString()}장 · 하루 경계 새벽 {rolloverHour}시 · 색 단계는 공부한 날의 사분위
+            {scopeLabel} 리뷰 {total.toLocaleString()}장 · 하루 경계 새벽 {rolloverHour}시 · 색 단계는 공부한 날의 사분위
           </p>
         </div>
         <button

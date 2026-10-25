@@ -48,7 +48,7 @@ export const StatsOverview: React.FC<{ refreshKey: number; language?: 'en' | 'zh
     <div className="space-y-4">
       {error && <div className="text-xs text-apple-orange">새로고침 실패: {error} (이전 데이터 표시 중)</div>}
       <StatTiles data={data} />
-      <Heatmap days={data.heatmap} rolloverHour={data.rollover_hour} />
+      <Heatmap days={data.heatmap} rolloverHour={data.rollover_hour} lang={data.lang} />
       <div className="grid gap-4 lg:grid-cols-2">
         <ForecastChart forecast={data.forecast} language={language} />
         <RetentionChart weeks={data.weekly_retention} target={data.desired_retention} language={language} />
