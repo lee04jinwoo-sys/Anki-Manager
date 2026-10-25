@@ -10,11 +10,21 @@ export default {
         sans: [
           "-apple-system",
           "BlinkMacSystemFont",
+          '"LXGW WenKai GB"',
+          '"霞鹜文楷 GB"',
           '"SF Pro Text"',
           '"SF Pro Display"',
           '"Helvetica Neue"',
           "Inter",
           "Arial",
+          "sans-serif",
+        ],
+        chinese: [
+          '"LXGW WenKai GB"',
+          '"霞鹜文楷 GB"',
+          '"Kaiti SC"',
+          '"STKaiti"',
+          '"PingFang SC"',
           "sans-serif",
         ],
         mono: [

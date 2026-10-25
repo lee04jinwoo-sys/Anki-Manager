@@ -50,13 +50,23 @@ def test_overview_shape_and_values(client):
     assert r.status_code == 200, r.text
     d = r.json()
     assert d["today"]["reviews"] == 1 and d["today"]["minutes"] == 1.0
-    assert d["habit"]["current"] == 3          # 오늘·어제·그제(일본어) 연속
+    # 영어 덱 기준으로 격리 집계되므로 비영어(일본어) 덱 리뷰는 제외되어 오늘·어제 2일 연속
+    assert d["habit"]["current"] == 2
     assert d["retention_30d"]["mature"] == {"reviews": 2, "passed": 1, "rate": 50.0}
     assert d["retention_30d"]["young"]["rate"] == 100.0
     assert len(d["heatmap"]) == 365 and len(d["forecast"]) == 180 and len(d["weekly_retention"]) == 52
     assert [x["label"] for x in d["decks"]] == ["Vocabulary", "Sentence", "Grammar"]
     assert d["decks"][0]["composition"]["new"] == 2 and d["decks"][0]["reviewed_today"] == 1
     assert d["desired_retention"] == 90.0
+    assert d["lang"] == "en"
+
+
+def test_overview_chinese(client):
+    r = client.get("/api/stats/overview?lang=zh")
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert [x["label"] for x in d["decks"]] == ["Vocabulary", "Sentence"]
+    assert len(d["decks"]) == 2
 
 
 def test_overview_when_anki_offline(client, monkeypatch):

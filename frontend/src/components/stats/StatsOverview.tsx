@@ -8,19 +8,22 @@ import { ForecastChart } from './ForecastChart'
 import { RetentionChart } from './RetentionChart'
 import { DeckTable } from './DeckTable'
 
-/** 학습 통계 영역. refreshKey가 바뀌면 다시 불러온다. */
-export const StatsOverview: React.FC<{ refreshKey: number }> = ({ refreshKey }) => {
+/** 학습 통계 영역. refreshKey나 language가 바뀌면 다시 불러온다. */
+export const StatsOverview: React.FC<{ refreshKey: number; language?: 'en' | 'zh' }> = ({
+  refreshKey,
+  language = 'en',
+}) => {
   const [data, setData] = useState<Stats | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     try {
-      setData(await api.getStatsOverview())
+      setData(await api.getStatsOverview(language))
       setError(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : '통계를 불러오지 못했습니다.')
     }
-  }, [])
+  }, [language])
 
   useEffect(() => {
     load()
@@ -40,10 +43,10 @@ export const StatsOverview: React.FC<{ refreshKey: number }> = ({ refreshKey }) 
       <StatTiles data={data} />
       <Heatmap days={data.heatmap} rolloverHour={data.rollover_hour} />
       <div className="grid gap-4 lg:grid-cols-2">
-        <ForecastChart forecast={data.forecast} />
-        <RetentionChart weeks={data.weekly_retention} target={data.desired_retention} />
+        <ForecastChart forecast={data.forecast} language={language} />
+        <RetentionChart weeks={data.weekly_retention} target={data.desired_retention} language={language} />
       </div>
-      <DeckTable decks={data.decks} target={data.desired_retention} />
+      <DeckTable decks={data.decks} target={data.desired_retention} language={language} />
     </div>
   )
 }

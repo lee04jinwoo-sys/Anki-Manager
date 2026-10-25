@@ -37,6 +37,7 @@ const tierLabel = (t?: string) => (t ? TIER_LABELS[t] ?? '–' : '–')
 
 interface LinkManagerPanelProps {
   onRefreshDashboard?: () => void
+  language?: 'en' | 'zh'
 }
 
 type FilterMode = 'leech' | 'treated' | 'zero' | 'low' | 'all'
@@ -49,6 +50,7 @@ const dateOf = (ts: number) => {
 
 export const LinkManagerPanel: React.FC<LinkManagerPanelProps> = ({
   onRefreshDashboard,
+  language = 'en',
 }) => {
   // Stats state
   const [stats, setStats] = useState<LinkStats | null>(null)
@@ -70,8 +72,8 @@ export const LinkManagerPanel: React.FC<LinkManagerPanelProps> = ({
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Filters (default to 'leech' for high-priority risk resolution)
-  const [filterMode, setFilterMode] = useState<FilterMode>('leech')
+  // Filters (default to 'all' if Chinese since leech is mostly 0, else 'leech')
+  const [filterMode, setFilterMode] = useState<FilterMode>(language === 'zh' ? 'all' : 'leech')
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [offset, setOffset] = useState(0)
@@ -86,6 +88,13 @@ export const LinkManagerPanel: React.FC<LinkManagerPanelProps> = ({
   const [generationFeedback, setGenerationFeedback] = useState<string | null>(
     null,
   )
+
+  // Reset selection and mode on language switch
+  useEffect(() => {
+    setSelectedMap(new Map())
+    setOffset(0)
+    setFilterMode(language === 'zh' ? 'all' : 'leech')
+  }, [language])
 
   const [, startTransition] = useTransition()
 
@@ -109,18 +118,22 @@ export const LinkManagerPanel: React.FC<LinkManagerPanelProps> = ({
   // Load stats
   const fetchStats = useCallback(async () => {
     try {
-      const res = await api.getLinkStats()
+      const res = await api.getLinkStats(language)
       setStats(res)
-      try {
-        const cRes = await api.getCorpusAuditStats()
-        setCorpusStats(cRes)
-      } catch (ce) {
-        console.warn('Corpus stats not loaded:', ce)
+      if (language === 'en') {
+        try {
+          const cRes = await api.getCorpusAuditStats()
+          setCorpusStats(cRes)
+        } catch (ce) {
+          console.warn('Corpus stats not loaded:', ce)
+        }
+      } else {
+        setCorpusStats(null)
       }
     } catch (e) {
       console.error('Failed to load link stats:', e)
     }
-  }, [])
+  }, [language])
 
   const handleOpenChunkModal = (item: LinkVocabItem) => {
     setChunkModalItem(item)
@@ -137,6 +150,7 @@ export const LinkManagerPanel: React.FC<LinkManagerPanelProps> = ({
         offset,
         filter_mode: filterMode,
         search: debouncedSearch || undefined,
+        lang: language,
       })
       setVocabData(res)
     } catch (e) {
@@ -148,7 +162,7 @@ export const LinkManagerPanel: React.FC<LinkManagerPanelProps> = ({
     } finally {
       setIsLoading(false)
     }
-  }, [filterMode, offset, debouncedSearch])
+  }, [filterMode, offset, debouncedSearch, language])
 
   useEffect(() => {
     fetchStats()
@@ -163,7 +177,7 @@ export const LinkManagerPanel: React.FC<LinkManagerPanelProps> = ({
     setIsScanning(true)
     setScanMessage(null)
     try {
-      const res = await api.scanLinks()
+      const res = await api.scanLinks(language)
       setScanMessage(res.message || '스캔 및 링크 동기화가 완료되었습니다.')
       setTimeout(() => setScanMessage(null), 4000)
       await fetchStats()
@@ -180,7 +194,7 @@ export const LinkManagerPanel: React.FC<LinkManagerPanelProps> = ({
   const handlePickLeech = async () => {
     setIsLoading(true)
     try {
-      const res = await api.getLinkLeech(20)
+      const res = await api.getLinkLeech(20, language)
       const nextMap = new Map<number, LinkVocabItem>()
       res.items.forEach((item) => nextMap.set(item.note_id, item))
       setSelectedMap(nextMap)
@@ -199,7 +213,7 @@ export const LinkManagerPanel: React.FC<LinkManagerPanelProps> = ({
   const handlePickRandom = async () => {
     setIsLoading(true)
     try {
-      const res = await api.getLinkRandom(20)
+      const res = await api.getLinkRandom(20, language)
       const nextMap = new Map<number, LinkVocabItem>()
       res.items.forEach((item) => nextMap.set(item.note_id, item))
       setSelectedMap(nextMap)
@@ -255,9 +269,9 @@ export const LinkManagerPanel: React.FC<LinkManagerPanelProps> = ({
         word: v.word,
         meaning: v.meaning,
       }))
-      const res = await api.batchGenerateSentences(wordsPayload, generateAudio)
+      const res = await api.batchGenerateSentences(wordsPayload, generateAudio, language)
       setGenerationFeedback(
-        `AI 실생활 예문 ${res.created_count ?? selectedMap.size}개가 생성되어 Sentence 덱에 자동 추가되었습니다!`,
+        `AI 실생활 예문 ${res.created_count ?? selectedMap.size}개가 생성되어 ${language === 'zh' ? 'Chinese Sentence' : 'English Sentence'} 덱에 자동 추가되었습니다!`,
       )
       setSelectedMap(new Map())
       await fetchStats()

@@ -20,6 +20,11 @@ ENGLISH_DECKS = [
     (f"{ENGLISH_PARENT}::Sentence", "Sentence"),
     (f"{ENGLISH_PARENT}::Grammar", "Grammar"),
 ]
+CHINESE_PARENT = "1. Language::1.2. Chinese"
+CHINESE_DECKS = [
+    (f"{CHINESE_PARENT}::Vocabulary", "Vocabulary"),
+    (f"{CHINESE_PARENT}::Sentence", "Sentence"),
+]
 MATURE_IVL = 21
 FORECAST_DAYS = 180  # 향후 복습량: 오늘 포함 180일 (일별). 화면에서 주 단위로 묶어 본다
 RETENTION_WEEKS = 52  # 주간 정답률: 1년
@@ -142,36 +147,41 @@ def _multi_count(queries: list[str], action: str = "findCards") -> list[int]:
     return [len(r.get("result") or []) if isinstance(r, dict) else len(r or []) for r in res]
 
 
-def get_overview(now: float | None = None) -> dict[str, Any]:
+def get_overview(now: float | None = None, lang: str = "en") -> dict[str, Any]:
     now = now or time.time()
     year_ago_ms = int((now - 366 * 86400) * 1000)
 
-    # 1. 전체 덱 리뷰 기록 (잔디맵·연속 학습일은 공부 습관 전체를 본다)
-    all_rows: list[Row] = []
-    eng_rows: dict[str, list[Row]] = {}
-    for deck in AnkiConnector.invoke("deckNames") or []:
+    is_chinese = (lang == "zh" or lang == "chinese")
+    target_parent = CHINESE_PARENT if is_chinese else ENGLISH_PARENT
+    target_decks = CHINESE_DECKS if is_chinese else ENGLISH_DECKS
+
+    # 1. 해당 언어 덱 리뷰 기록 (선택된 언어 덱의 카드만 엄격히 격리 집계)
+    deck_names = AnkiConnector.invoke("deckNames") or []
+    target_deck_names = [d for d in deck_names if d == target_parent or d.startswith(target_parent + "::")]
+    lang_rows: dict[str, list[Row]] = {}
+    for deck in target_deck_names:
         rows = AnkiConnector.invoke("cardReviews", deck=deck, startID=year_ago_ms) or []
-        all_rows.extend(rows)
-        if deck == ENGLISH_PARENT or deck.startswith(ENGLISH_PARENT + "::"):
-            eng_rows[deck] = rows
+        lang_rows[deck] = rows
+
+    lang_all = [r for rows in lang_rows.values() for r in rows]
 
     reference = dict(AnkiConnector.invoke("getNumCardsReviewedByDay") or [])
-    rollover = infer_rollover_hour(all_rows, {d: n for d, n in list(reference.items())[:60]})
+    rollover = infer_rollover_hour(lang_all, {d: n for d, n in list(reference.items())[:60]})
     today = dt.date.fromisoformat(day_key(int(now * 1000), rollover))
 
-    daily = daily_activity(all_rows, rollover)
+    # 잔디맵 및 공부 습관 지표 (선택된 언어 덱 전용)
+    daily = daily_activity(lang_all, rollover)
     days = heatmap(daily, today)
     studied = {d["date"] for d in days if d["reviews"] > 0}
     last30 = days[-30:]
 
-    # 2. 영어 덱 정답률 (최근 30일)
+    # 2. 해당 언어 덱 정답률 (최근 30일)
     cutoff_30 = int((now - 30 * 86400) * 1000)
-    eng_all = [r for rows in eng_rows.values() for r in rows]
-    eng_30 = [r for r in eng_all if r[0] >= cutoff_30]
+    lang_30 = [r for r in lang_all if r[0] >= cutoff_30]
 
     # 3. 덱별 구성·부하 (findCards 개수를 multi 한 번으로)
     deck_queries: list[str] = []
-    for deck, _ in ENGLISH_DECKS:
+    for deck, _ in target_decks:
         q = f'deck:"{deck}"'
         deck_queries += [
             f"{q} is:new -is:suspended",
@@ -182,18 +192,18 @@ def get_overview(now: float | None = None) -> dict[str, Any]:
             f"{q} is:due -is:suspended",
             f"{q} prop:due=1 -is:suspended",
         ]
-    forecast_queries = [f'deck:"{ENGLISH_PARENT}" is:due -is:suspended'] + [
-        f'deck:"{ENGLISH_PARENT}" prop:due={n} -is:suspended' for n in range(1, FORECAST_DAYS)
+    forecast_queries = [f'deck:"{target_parent}" is:due -is:suspended'] + [
+        f'deck:"{target_parent}" prop:due={n} -is:suspended' for n in range(1, FORECAST_DAYS)
     ]
     counts = _multi_count(deck_queries + forecast_queries)
     deck_counts, forecast_counts = counts[: len(deck_queries)], counts[len(deck_queries):]
     # 만성 오답은 노트(단어) 단위로 센다 (findNotes는 조건에 맞는 카드가 있는 노트를 돌려준다)
-    leech_notes = _multi_count([f'deck:"{deck}" {LEECH_QUERY}' for deck, _ in ENGLISH_DECKS], action="findNotes")
+    leech_notes = _multi_count([f'deck:"{deck}" {LEECH_QUERY}' for deck, _ in target_decks], action="findNotes")
 
     decks = []
-    for i, (deck, label) in enumerate(ENGLISH_DECKS):
+    for i, (deck, label) in enumerate(target_decks):
         new, learning, young, mature, suspended, due_today, due_tomorrow = deck_counts[i * 7:(i + 1) * 7]
-        rows = eng_rows.get(deck, [])
+        rows = lang_rows.get(deck, [])
         rows_30 = [r for r in rows if r[0] >= cutoff_30]
         today_rows = [r for r in rows if day_key(r[0], rollover) == today.isoformat() and r[3] != 0]
         decks.append({
@@ -214,7 +224,7 @@ def get_overview(now: float | None = None) -> dict[str, Any]:
             "date": today.isoformat(),
             "reviews": today_entry["reviews"],
             "minutes": today_entry["minutes"],
-            "due_remaining": forecast_counts[0],
+            "due_remaining": forecast_counts[0] if forecast_counts else 0,
             "due_tomorrow": forecast_counts[1] if len(forecast_counts) > 1 else 0,
             "new_available": sum(d["composition"]["new"] for d in decks),
         },
@@ -224,22 +234,24 @@ def get_overview(now: float | None = None) -> dict[str, Any]:
             "avg_reviews_30d": round(sum(d["reviews"] for d in last30) / 30, 1),
             "avg_minutes_30d": round(sum(d["minutes"] for d in last30) / 30, 1),
         },
-        "retention_30d": retention(eng_30),
-        "weekly_retention": weekly_retention(eng_all, rollover, today, weeks=RETENTION_WEEKS),
+        "retention_30d": retention(lang_30),
+        "weekly_retention": weekly_retention(lang_all, rollover, today, weeks=RETENTION_WEEKS),
         "forecast": [
             {"date": (today + dt.timedelta(days=n)).isoformat(), "due": c} for n, c in enumerate(forecast_counts)
         ],
         "heatmap": days,
         "decks": decks,
         "rollover_hour": rollover,
-        "desired_retention": _desired_retention(),
+        "desired_retention": _desired_retention(target_decks[0][0]),
+        "lang": "zh" if is_chinese else "en",
     }
 
 
-def _desired_retention() -> float | None:
-    """FSRS 목표 정답률(%) — Vocabulary 덱 옵션 기준. 없으면 None."""
+def _desired_retention(deck_name: str | None = None) -> float | None:
+    """FSRS 목표 정답률(%) — 지정 덱 옵션 기준. 없으면 None."""
     try:
-        cfg = AnkiConnector.invoke("getDeckConfig", deck=ENGLISH_DECKS[0][0]) or {}
+        target = deck_name or ENGLISH_DECKS[0][0]
+        cfg = AnkiConnector.invoke("getDeckConfig", deck=target) or {}
         value = cfg.get("desiredRetention")
         return round(value * 100, 1) if value else None
     except Exception:

@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 from config import (
     GOOGLE_API_KEY, NOTE_COMPLETOR_MODEL, GEMINI_DEFAULT_TEMPERATURE,
-    DECK_SENTENCE, MODEL_SENTENCE
+    DECK_SENTENCE, MODEL_SENTENCE, DECK_ZH_SENTENCE, MODEL_ZH_SENTENCE
 )
 from integrations.anki_connect import AnkiConnector
 from integrations.audio import AnkiTTSFiller
@@ -33,6 +33,12 @@ BATCH_SENTENCE_PROMPT = """원어민 실생활 영어 문장과 자연스러운 
 2. 'A, B, V, V-ing' 기호는 반드시 실제 자연스러운 사람, 사물, 동작으로 대체 (기호 노출 절대 금지)
 3. 출력 형식: JSON 2차원 배열만 반환 -> [["단어", "영어문장", "한국어번역"], ...]"""
 
+BATCH_SENTENCE_ZH_PROMPT = """HSK 1~3 (A1~A2 초급) 수준의 짧고 쉬운 실생활 중국어 문장과 성조 표기 병음, 한국어 번역을 작성하세요.
+규칙:
+1. 각 단어마다 1개의 완성된 실용 문장 작성 (6~14글자 내외의 간체자)
+2. 초급자 어휘 중심으로 작성
+3. 출력 형식: JSON 2차원 배열만 반환 -> [["단어", "간체자문장", "한국어번역", "한어병음"], ...]"""
+
 
 class BatchSentenceGenerator:
     """선택된 단어들에 대해 AI 문장을 일괄 생성하고 Anki 덱에 등록 및 자동 링크하는 클래스"""
@@ -48,7 +54,8 @@ class BatchSentenceGenerator:
     def generate_and_add_sentences(
         self,
         words_data: List[Dict[str, Any]],
-        generate_audio: bool = True
+        generate_audio: bool = True,
+        lang: str = "en"
     ) -> Dict[str, Any]:
         """
         words_data: [{"note_id": 1234, "word": "come in clutch", "meaning": "..."}, ...]
@@ -69,12 +76,16 @@ class BatchSentenceGenerator:
 
         user_prompt = "다음 어휘들로 실생활 예문과 번역을 생성해 주세요:\n" + "\n".join(words_prompt_lines)
 
+        target_prompt = BATCH_SENTENCE_ZH_PROMPT if lang == "zh" else BATCH_SENTENCE_PROMPT
+        deck_target = DECK_ZH_SENTENCE if lang == "zh" else DECK_SENTENCE
+        model_target = MODEL_ZH_SENTENCE if lang == "zh" else MODEL_SENTENCE
+
         try:
             response = self.client.models.generate_content(
                 model=self.model_id,
                 contents=user_prompt,
                 config=types.GenerateContentConfig(
-                    system_instruction=BATCH_SENTENCE_PROMPT,
+                    system_instruction=target_prompt,
                     temperature=0.3,
                     response_mime_type="application/json",
                 )
@@ -104,12 +115,16 @@ class BatchSentenceGenerator:
         vocab_ids_updated = set()
 
         for gen_item in raw_items:
+            pinyin_str = ""
             if isinstance(gen_item, (list, tuple)) and len(gen_item) >= 3:
                 w_str, sent_str, trans_str = gen_item[0], gen_item[1], gen_item[2]
+                if len(gen_item) >= 4:
+                    pinyin_str = str(gen_item[3])
             elif isinstance(gen_item, dict):
                 w_str = gen_item.get("word", "")
                 sent_str = gen_item.get("sentence", "")
                 trans_str = gen_item.get("translation", "")
+                pinyin_str = gen_item.get("pinyin", "")
             else:
                 continue
 
@@ -125,26 +140,35 @@ class BatchSentenceGenerator:
 
             clean_sentence = clean_text(str(sent_str))
             clean_translation = clean_text(str(trans_str))
+            clean_pinyin = clean_text(str(pinyin_str))
 
             if not clean_sentence:
                 continue
 
             # Anki 노트 필드 구성 (텍스트 즉시 생성)
-            fields = {
-                "문장": clean_sentence,
-                "해설": clean_translation,
-                "소리": ""
-            }
+            if lang == "zh":
+                fields = {
+                    "문장": clean_sentence,
+                    "뜻": clean_translation,
+                    "한어병음": clean_pinyin,
+                    "소리": ""
+                }
+            else:
+                fields = {
+                    "문장": clean_sentence,
+                    "해설": clean_translation,
+                    "소리": ""
+                }
 
             try:
                 new_note_id = AnkiConnector.add_note(
-                    deck_name=DECK_SENTENCE,
-                    model_name=MODEL_SENTENCE,
+                    deck_name=deck_target,
+                    model_name=model_target,
                     fields=fields
                 )
                 logger.info(f"Anki 문장 카드 생성 완료: {clean_sentence} (ID: {new_note_id})")
 
-                # 백그라운드 오디오 비동기 큐 등록 (대기 시간 0초)
+                # 백그라운드 오디오 비동기 큐 등록
                 if generate_audio and new_note_id:
                     from backend.services.card_service import queue_background_audio
                     queue_background_audio(new_note_id, clean_sentence, is_sentence=True)
@@ -152,11 +176,12 @@ class BatchSentenceGenerator:
                 if matched_vocab:
                     v_id = matched_vocab["note_id"]
                     v_word = matched_vocab["word"]
-                    links_to_insert.append((v_id, v_word, new_note_id, clean_sentence))
+                    links_to_insert.append((v_id, v_word, new_note_id, clean_sentence, lang))
                     vocab_ids_updated.add(v_id)
-                    # 단어 카드의 예문 풀에 자동 연동 (최대 5개 캡, 토큰 0개)
+                    # 단어 카드의 예문 풀에 자동 연동
+                    formatted_ex = f"{clean_sentence} ({clean_pinyin} / {clean_translation})" if lang == "zh" and clean_pinyin else clean_sentence
                     try:
-                        LinkManager._append_sentence_to_vocab_note(v_id, clean_sentence)
+                        LinkManager._append_sentence_to_vocab_note(v_id, formatted_ex)
                     except Exception as append_err:
                         logger.warning(f"단어 예문 자동 추가 실패 ({v_word}): {append_err}")
 
@@ -164,6 +189,7 @@ class BatchSentenceGenerator:
                     "word": w_str,
                     "sentence": clean_sentence,
                     "translation": clean_translation,
+                    "pinyin": clean_pinyin,
                     "note_id": new_note_id
                 })
             except Exception as e:
@@ -174,16 +200,17 @@ class BatchSentenceGenerator:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
                 cursor.executemany("""
-                    INSERT OR IGNORE INTO links (vocab_note_id, vocab_word, sentence_note_id, sentence_text)
-                    VALUES (?, ?, ?, ?)
+                    INSERT OR IGNORE INTO links (vocab_note_id, vocab_word, sentence_note_id, sentence_text, lang)
+                    VALUES (?, ?, ?, ?, ?)
                 """, links_to_insert)
 
                 for v_id in vocab_ids_updated:
                     cursor.execute("""
                         UPDATE vocab_cache
                         SET link_count = link_count + 1
-                        WHERE note_id = ?
-                    """, (v_id,))
+                        WHERE note_id = ? AND lang = ?
+                    """, (v_id, lang))
+                conn.commit()
                 conn.commit()
 
         return {

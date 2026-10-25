@@ -20,13 +20,14 @@ router = APIRouter(prefix="/api/links", tags=["links"])
 class BatchGenerateRequest(BaseModel):
     words: List[Dict[str, Any]] = Field(description="선택된 단어 목록 [{'note_id': ..., 'word': ..., 'meaning': ...}]")
     generate_audio: bool = Field(default=True, description="TTS 오디오 동시 생성 여부")
+    lang: str = Field(default="en", description="언어 코드 (en, zh)")
 
 
 @router.get("/stats")
-def get_stats():
+def get_stats(lang: str = Query("en", description="언어 코드 (en, zh)")):
     """전체 통계 요약 조회"""
     try:
-        return LinkManager.get_stats()
+        return LinkManager.get_stats(lang=lang)
     except Exception as e:
         logger.error(f"통계 조회 실패: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -38,7 +39,8 @@ def get_vocab_list(
     offset: int = Query(0, ge=0),
     filter_mode: Optional[str] = Query(None, description="필터 모드 (leech, zero, low, all)"),
     max_links: Optional[int] = Query(None, description="최대 연결 수 필터 (예: 0개, 1개 이하)"),
-    search: Optional[str] = Query(None, description="단어 또는 뜻 검색")
+    search: Optional[str] = Query(None, description="단어 또는 뜻 검색"),
+    lang: str = Query("en", description="언어 코드 (en, zh)")
 ):
     """연결 적은 순 정렬 단어 목록 조회"""
     try:
@@ -47,10 +49,11 @@ def get_vocab_list(
             offset=offset,
             filter_mode=filter_mode,
             max_links=max_links,
-            search=search
+            search=search,
+            lang=lang
         )
-        if filter_mode == "leech":
-            # 단어별 처리 방법 추천 (빈도 등급은 로컬 코퍼스 DB 조회)
+        if filter_mode == "leech" and lang == "en":
+            # 단어별 처리 방법 추천 (영어 전용 로컬 코퍼스 DB 조회)
             for item in res.get("items", []):
                 _, tier = evaluate_expression_rank_and_tier(item.get("word", ""))
                 item["tier"] = tier
@@ -65,10 +68,13 @@ def get_vocab_list(
 
 
 @router.get("/random")
-def get_random_unlinked(count: int = Query(20, ge=1, le=50, description="추출할 랜덤 단어 수")):
+def get_random_unlinked(
+    count: int = Query(20, ge=1, le=50, description="추출할 랜덤 단어 수"),
+    lang: str = Query("en", description="언어 코드 (en, zh)")
+):
     """미연결 단어 중 무작위 N개 추출"""
     try:
-        items = LinkManager.get_random_unlinked_vocab(count=count)
+        items = LinkManager.get_random_unlinked_vocab(count=count, lang=lang)
         return {"count": len(items), "items": items}
     except Exception as e:
         logger.error(f"랜덤 단어 추출 실패: {e}")
@@ -76,10 +82,13 @@ def get_random_unlinked(count: int = Query(20, ge=1, le=50, description="추출�
 
 
 @router.get("/leech")
-def get_leech_unlinked(count: int = Query(20, ge=1, le=50, description="추출할 최다 오답 단어 수")):
+def get_leech_unlinked(
+    count: int = Query(20, ge=1, le=50, description="추출할 최다 오답 단어 수"),
+    lang: str = Query("en", description="언어 코드 (en, zh)")
+):
     """미연결 단어 중 가장 많이 틀린(Lapses 많은 순) N개 추출"""
     try:
-        items = LinkManager.get_worst_leech_unlinked_vocab(count=count)
+        items = LinkManager.get_worst_leech_unlinked_vocab(count=count, lang=lang)
         return {"count": len(items), "items": items}
     except Exception as e:
         logger.error(f"최다 오답 단어 추출 실패: {e}")
@@ -87,11 +96,11 @@ def get_leech_unlinked(count: int = Query(20, ge=1, le=50, description="추출�
 
 
 @router.post("/scan")
-def scan_and_rebuild():
+def scan_and_rebuild(lang: str = Query("en", description="언어 코드 (en, zh)")):
     """100% 완전 자동 전체 재스캔 및 links.db 갱신"""
     try:
-        result = LinkManager.scan_and_rebuild_links()
-        return {"success": True, "message": "스캔 및 링크 동기화가 완료되었습니다.", "data": result}
+        result = LinkManager.scan_and_rebuild_links(lang=lang)
+        return {"success": True, "message": f"[{lang.upper()}] 스캔 및 링크 동기화가 완료되었습니다.", "data": result}
     except Exception as e:
         logger.error(f"스캔 실패: {e}")
         raise HTTPException(status_code=500, detail=f"스캔 실패: {e}")
@@ -106,7 +115,8 @@ def batch_generate_sentences(req: BatchGenerateRequest):
         generator = BatchSentenceGenerator()
         result = generator.generate_and_add_sentences(
             words_data=req.words,
-            generate_audio=req.generate_audio
+            generate_audio=req.generate_audio,
+            lang=req.lang
         )
         return result
     except Exception as e:
@@ -181,10 +191,13 @@ def apply_card_templates():
 
 
 @router.get("/badge/vocab")
-def get_vocab_badge(word: str = Query(..., description="조회할 단어")):
+def get_vocab_badge(
+    word: str = Query(..., description="조회할 단어"),
+    lang: str = Query("en", description="언어 코드 (en, zh)")
+):
     """Vocab 카드 뒷면 비동기 호출용: 연결된 문장 수 반환"""
     try:
-        sentences = LinkManager.get_linked_sentences_for_vocab(word)
+        sentences = LinkManager.get_linked_sentences_for_vocab(word, lang=lang)
         return {"word": word, "count": len(sentences)}
     except Exception as e:
         logger.error(f"Vocab 뱃지 조회 실패: {e}")
@@ -192,10 +205,13 @@ def get_vocab_badge(word: str = Query(..., description="조회할 단어")):
 
 
 @router.get("/badge/sentence")
-def get_sentence_badge(text: str = Query(..., description="조회할 문장 텍스트")):
+def get_sentence_badge(
+    text: str = Query(..., description="조회할 문장 텍스트"),
+    lang: str = Query("en", description="언어 코드 (en, zh)")
+):
     """Sentence 카드 뒷면 비동기 호출용: 포함된 어휘 목록 및 뜻 반환"""
     try:
-        items = LinkManager.get_linked_vocab_for_sentence(text)
+        items = LinkManager.get_linked_vocab_for_sentence(text, lang=lang)
         words = [item["word"] for item in items]
         return {"sentence": text, "words": words, "items": items}
     except Exception as e:

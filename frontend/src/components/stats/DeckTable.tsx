@@ -13,13 +13,18 @@ const PARTS = [
 
 const pct = (v: number | null) => (v === null ? '–' : `${v.toFixed(1)}%`)
 
-export const DeckTable: React.FC<{ decks: DeckStats[]; target: number | null }> = ({ decks, target }) => {
+export const DeckTable: React.FC<{
+  decks: DeckStats[]
+  target: number | null
+  language?: 'en' | 'zh'
+}> = ({ decks, target, language = 'en' }) => {
   const { node: tip, show, hide } = useTooltip()
+  const langLabel = language === 'zh' ? '중국어 덱' : '영어 덱'
   return (
     <section className="rounded-apple border border-apple-border bg-apple-card p-5 shadow-apple-card">
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <div>
-          <h2 className="text-sm font-semibold text-apple-text">덱별 현황</h2>
+          <h2 className="text-sm font-semibold text-apple-text">덱별 현황 ({langLabel})</h2>
           <p className="text-xs text-apple-secondary">정답률은 최근 30일 복습 리뷰 기준(▼ 목표 미만) · 만성 오답은 Lapse 4회+ 또는 Ease 130% 이하인 단어(노트) 수</p>
         </div>
         <div className="flex flex-wrap gap-3 text-[11px] text-apple-secondary">

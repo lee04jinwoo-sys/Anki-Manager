@@ -6,6 +6,8 @@ import { showObsidianImport } from '../lib/obsidianInbox'
 interface HeaderProps {
   data: DashboardResponse | null
   isLoading: boolean
+  activeLanguage: 'en' | 'zh'
+  onLanguageChange: (lang: 'en' | 'zh') => void
   onRefresh: () => void
   onOpenMaintenance: () => void
   onOpenObsidian: () => void
@@ -38,6 +40,8 @@ const ActionButton: React.FC<{
 export const Header: React.FC<HeaderProps> = ({
   data,
   isLoading,
+  activeLanguage,
+  onLanguageChange,
   onRefresh,
   onOpenMaintenance,
   onOpenObsidian,
@@ -56,6 +60,32 @@ export const Header: React.FC<HeaderProps> = ({
             <span className={`inline-block h-2 w-2 rounded-full ${isConnected ? 'bg-apple-green' : 'animate-pulse bg-apple-red'}`} />
             {isConnected ? 'Anki 연결됨' : 'Anki 연결 끊김'}
           </span>
+
+          {/* Apple-style Language Segmented Switch */}
+          <div className="ml-2 inline-flex items-center rounded-apple-sm bg-apple-subtle p-0.5 border border-apple-border text-xs">
+            <button
+              type="button"
+              onClick={() => onLanguageChange('en')}
+              className={`px-2.5 py-1 rounded-[6px] font-medium transition-all ${
+                activeLanguage === 'en'
+                  ? 'bg-white text-apple-text shadow-sm dark:bg-apple-card font-semibold'
+                  : 'text-apple-secondary hover:text-apple-text'
+              }`}
+            >
+              🇺🇸 English
+            </button>
+            <button
+              type="button"
+              onClick={() => onLanguageChange('zh')}
+              className={`px-2.5 py-1 rounded-[6px] font-medium transition-all ${
+                activeLanguage === 'zh'
+                  ? 'bg-white text-apple-text shadow-sm dark:bg-apple-card font-semibold'
+                  : 'text-apple-secondary hover:text-apple-text'
+              }`}
+            >
+              🇨🇳 中文
+            </button>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">

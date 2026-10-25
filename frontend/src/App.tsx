@@ -15,6 +15,27 @@ export const App: React.FC = () => {
   const [data, setData] = useState<DashboardResponse | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [activeLanguage, setActiveLanguageState] = useState<'en' | 'zh'>(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search)
+      const qLang = urlParams.get('lang')
+      if (qLang === 'zh' || qLang === 'en') return qLang
+      const saved = localStorage.getItem('anki_active_language')
+      if (saved === 'zh' || saved === 'en') return saved
+    } catch (_) {}
+    return 'zh'
+  })
+
+  const setActiveLanguage = (lang: 'en' | 'zh') => {
+    setActiveLanguageState(lang)
+    setStatsKey((k) => k + 1)
+    try {
+      localStorage.setItem('anki_active_language', lang)
+      const url = new URL(window.location.href)
+      url.searchParams.set('lang', lang)
+      window.history.replaceState({}, '', url.toString())
+    } catch (_) {}
+  }
 
   // Active Job State (synced dynamically)
   const [jobState, setJobState] = useState<JobState>({
@@ -88,6 +109,8 @@ export const App: React.FC = () => {
       <Header
         data={data}
         isLoading={isLoading}
+        activeLanguage={activeLanguage}
+        onLanguageChange={setActiveLanguage}
         onRefresh={() => loadDashboard(false)}
         onOpenMaintenance={() => setIsMaintenanceOpen(true)}
         onOpenObsidian={() => setIsObsidianOpen(true)}
@@ -124,11 +147,16 @@ export const App: React.FC = () => {
           </div>
         ) : (
           <>
-            {/* 2. 학습 통계: 핵심 수치 · 잔디 · 예측/정답률 · 덱별 현황 */}
-            {data?.connected && <StatsOverview refreshKey={statsKey} />}
+            {/* 2. 학습 통계: 핵심 수치 · 잔디 · 예측/정답률 · 덱별 현황 (언어별 동기화) */}
+            {data?.connected && (
+              <StatsOverview refreshKey={statsKey} language={activeLanguage} />
+            )}
 
             {/* 4. Unified Vocab Context & Leech Studio */}
-            <LinkManagerPanel onRefreshDashboard={() => loadDashboard(false)} />
+            <LinkManagerPanel
+              language={activeLanguage}
+              onRefreshDashboard={() => loadDashboard(false)}
+            />
           </>
         )}
       </main>

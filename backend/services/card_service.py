@@ -82,11 +82,17 @@ def generate_sentence_audio(text: str) -> str:
     if not clean_text:
         return ""
 
+    # 한자가 포함되어 있으면 중국어 1.0배속 Chirp3-HD 생성
+    is_chinese = bool(re.search(r'[\u4e00-\u9fff]', clean_text))
+
     # 1. Try GCP Chirp3-HD / Studio voices
     global _tts_client
     if _tts_client is not None:
         try:
-            sound_tag, _ = AnkiTTSFiller.generate_random_tts(_tts_client, clean_text)
+            if is_chinese:
+                sound_tag, _ = AnkiTTSFiller.generate_chinese_tts(_tts_client, clean_text)
+            else:
+                sound_tag, _ = AnkiTTSFiller.generate_random_tts(_tts_client, clean_text)
             if sound_tag:
                 return sound_tag
         except Exception as err:

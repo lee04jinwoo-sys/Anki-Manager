@@ -19,12 +19,17 @@ const SERIES = [
   { key: 'young' as const, label: '새싹 카드', color: 'var(--viz-series-2)' },
 ]
 
-export const RetentionChart: React.FC<{ weeks: Week[]; target: number | null }> = ({ weeks: allWeeks, target }) => {
+export const RetentionChart: React.FC<{
+  weeks: Week[]
+  target: number | null
+  language?: 'en' | 'zh'
+}> = ({ weeks: allWeeks, target, language = 'en' }) => {
   const [range, setRange] = useState<RetentionRange>('6m')
   const weeks = allWeeks.slice(-RETENTION_RANGES.find((r) => r.value === range)!.weeks)
   const { ref, width } = useWidth<HTMLDivElement>()
   const { node: tip, show, hide } = useTooltip()
   const [hover, setHover] = useState<number | null>(null)
+  const langLabel = language === 'zh' ? '중국어 덱' : '영어 덱'
 
   const values = weeks.flatMap((w) => SERIES.map((s) => w[s.key].rate)).filter((v): v is number => v !== null)
   const lo = Math.floor((Math.min(...values, target ?? 100) - 3) / 5) * 5
@@ -65,7 +70,7 @@ export const RetentionChart: React.FC<{ weeks: Week[]; target: number | null }> 
   return (
     <ChartCard
       title="주간 정답률 추이"
-      subtitle={`영어 덱 · 7일 단위 ${weeks.length}주 · 복습 리뷰 중 Again 이외 비율${target ? ` · 가로선은 목표 ${target}%` : ''}`}
+      subtitle={`${langLabel} · 7일 단위 ${weeks.length}주 · 복습 리뷰 중 Again 이외 비율${target ? ` · 가로선은 목표 ${target}%` : ''}`}
       controls={<RangeToggle value={range} options={RETENTION_RANGES} onChange={setRange} />}
       legend={SERIES.map((s) => (
         <LegendSwatch key={s.key} color={s.color} label={s.label} line />

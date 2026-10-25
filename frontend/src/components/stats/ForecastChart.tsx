@@ -26,12 +26,16 @@ function niceMax(v: number) {
   return Math.ceil(v / p) * p
 }
 
-export const ForecastChart: React.FC<{ forecast: StatsOverview['forecast'] }> = ({ forecast }) => {
+export const ForecastChart: React.FC<{
+  forecast: StatsOverview['forecast']
+  language?: 'en' | 'zh'
+}> = ({ forecast, language = 'en' }) => {
   const [range, setRange] = useState<ForecastRange>('3m')
   const { ref, width } = useWidth<HTMLDivElement>()
   const { node: tip, show, hide } = useTooltip()
   const bars = useMemo(() => forecastSeries(forecast, range), [forecast, range])
   const weekly = range !== '1m'
+  const langLabel = language === 'zh' ? '중국어 덱' : '영어 덱'
 
   const max = niceMax(Math.max(...bars.map((b) => b.due)))
   const innerW = width - PAD.left - PAD.right
@@ -46,7 +50,7 @@ export const ForecastChart: React.FC<{ forecast: StatsOverview['forecast'] }> = 
   return (
     <ChartCard
       title="향후 복습량"
-      subtitle={`영어 덱 · ${weekly ? '주별 합계' : '일별'} · 기간 합계 ${total.toLocaleString()}장 · 최대 ${span(peak)} ${peak.due.toLocaleString()}장`}
+      subtitle={`${langLabel} · ${weekly ? '주별 합계' : '일별'} · 기간 합계 ${total.toLocaleString()}장 · 최대 ${span(peak)} ${peak.due.toLocaleString()}장`}
       controls={<RangeToggle value={range} options={FORECAST_RANGES} onChange={setRange} />}
       table={<SimpleTable head={[weekly ? '주' : '날짜', '복습 예정']} rows={bars.map((b) => [span(b), b.due])} />}
     >

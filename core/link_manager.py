@@ -12,7 +12,8 @@ from collections import defaultdict
 from typing import List, Dict, Any, Optional, Tuple, Set
 
 from config import (
-    DECK_VOCAB, MODEL_VOCAB, DECK_SENTENCE, MODEL_SENTENCE, MODEL_GRAMMAR
+    DECK_VOCAB, MODEL_VOCAB, DECK_SENTENCE, MODEL_SENTENCE, MODEL_GRAMMAR,
+    DECK_ZH_VOCAB, MODEL_ZH_VOCAB, DECK_ZH_SENTENCE, MODEL_ZH_SENTENCE
 )
 from integrations.anki_connect import AnkiConnector
 
@@ -50,6 +51,7 @@ def init_db():
                 vocab_word TEXT NOT NULL,
                 sentence_note_id INTEGER NOT NULL,
                 sentence_text TEXT NOT NULL,
+                lang TEXT DEFAULT 'en',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(vocab_note_id, sentence_note_id)
             )
@@ -57,6 +59,7 @@ def init_db():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_links_vocab_id ON links(vocab_note_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_links_sentence_id ON links(sentence_note_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_links_vocab_word ON links(vocab_word)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_links_lang ON links(lang)")
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS vocab_cache (
@@ -65,10 +68,12 @@ def init_db():
                 meaning TEXT,
                 pos TEXT,
                 link_count INTEGER DEFAULT 0,
+                lang TEXT DEFAULT 'en',
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_vocab_link_count ON vocab_cache(link_count)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_vocab_lang ON vocab_cache(lang)")
         conn.commit()
 
 
@@ -310,14 +315,10 @@ class LinkManager:
         _leech_cache.clear()
 
     @classmethod
-    def scan_and_rebuild_links(cls) -> Dict[str, Any]:
+    def scan_and_rebuild_links(cls, lang: str = "en") -> Dict[str, Any]:
         init_db()
 
-        # 1. Anki에서 카드 정보 로드 (청크 단위 배치)
-        vocab_notes_ids = AnkiConnector.find_notes(f'note:"{MODEL_VOCAB}"') or []
-        sentence_notes_ids = AnkiConnector.find_notes(f'note:"{MODEL_SENTENCE}" OR note:"{MODEL_GRAMMAR}"') or []
-
-        # 배치 로드
+        # 배치 로드 헬퍼
         def fetch_in_chunks(ids: List[int], chunk_size: int = 2000):
             res = []
             for i in range(0, len(ids), chunk_size):
@@ -326,6 +327,81 @@ class LinkManager:
                 if info:
                     res.extend(info)
             return res
+
+        if lang == "zh":
+            vocab_notes_ids = AnkiConnector.find_notes(f'note:"{MODEL_ZH_VOCAB}"') or []
+            sentence_notes_ids = AnkiConnector.find_notes(f'note:"{MODEL_ZH_SENTENCE}"') or []
+
+            vocab_info_list = fetch_in_chunks(vocab_notes_ids)
+            sentence_info_list = fetch_in_chunks(sentence_notes_ids)
+
+            sentences_dict: Dict[int, str] = {}
+            for s in sentence_info_list:
+                nid = s['noteId']
+                stext = clean_text(s['fields'].get('문장', {}).get('value', ''))
+                if stext:
+                    sentences_dict[nid] = stext
+
+            vocabs = []
+            for v in vocab_info_list:
+                nid = v['noteId']
+                word_raw = v['fields'].get('단어', {}).get('value', '')
+                word = clean_text(word_raw)
+                meaning = clean_text(v['fields'].get('뜻', {}).get('value', ''))
+                pos = clean_text(v['fields'].get('품사', {}).get('value', ''))
+                if word:
+                    vocabs.append({
+                        "note_id": nid,
+                        "word": word,
+                        "meaning": meaning,
+                        "pos": pos,
+                    })
+
+            links_to_insert = []
+            vocab_counts: Dict[int, int] = {v["note_id"]: 0 for v in vocabs}
+            stop_1char = set("的了我你他在是有就不吗吧呢很들도")
+
+            for v in vocabs:
+                w = v["word"]
+                if len(w) == 1 and w in stop_1char:
+                    continue
+                for s_id, s_text in sentences_dict.items():
+                    if w in s_text:
+                        links_to_insert.append((v["note_id"], v["word"], s_id, s_text))
+                        vocab_counts[v["note_id"]] += 1
+
+            cls.invalidate_leech_cache()
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM links WHERE lang = ?", (lang,))
+                cursor.execute("DELETE FROM vocab_cache WHERE lang = ?", (lang,))
+
+                cursor.executemany("""
+                    INSERT OR IGNORE INTO links (vocab_note_id, vocab_word, sentence_note_id, sentence_text, lang)
+                    VALUES (?, ?, ?, ?, ?)
+                """, [(l[0], l[1], l[2], l[3], lang) for l in links_to_insert])
+
+                vocab_cache_data = [
+                    (v["note_id"], v["word"], v["meaning"], v["pos"], vocab_counts.get(v["note_id"], 0), lang)
+                    for v in vocabs
+                ]
+                cursor.executemany("""
+                    INSERT INTO vocab_cache (note_id, word, meaning, pos, link_count, lang)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, vocab_cache_data)
+
+                conn.commit()
+
+            return {
+                "total_vocab": len(vocabs),
+                "total_sentences": len(sentences_dict),
+                "total_links": len(links_to_insert),
+                "unlinked_vocab_count": sum(1 for c in vocab_counts.values() if c == 0)
+            }
+
+        # 기본 영어(en) 스캔 로직
+        vocab_notes_ids = AnkiConnector.find_notes(f'note:"{MODEL_VOCAB}"') or []
+        sentence_notes_ids = AnkiConnector.find_notes(f'note:"{MODEL_SENTENCE}" OR note:"{MODEL_GRAMMAR}"') or []
 
         vocab_info_list = fetch_in_chunks(vocab_notes_ids)
         sentence_info_list = fetch_in_chunks(sentence_notes_ids)
@@ -398,21 +474,21 @@ class LinkManager:
         cls.invalidate_leech_cache()
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM links")
-            cursor.execute("DELETE FROM vocab_cache")
+            cursor.execute("DELETE FROM links WHERE lang = ?", (lang,))
+            cursor.execute("DELETE FROM vocab_cache WHERE lang = ?", (lang,))
 
             cursor.executemany("""
-                INSERT OR IGNORE INTO links (vocab_note_id, vocab_word, sentence_note_id, sentence_text)
-                VALUES (?, ?, ?, ?)
-            """, links_to_insert)
+                INSERT OR IGNORE INTO links (vocab_note_id, vocab_word, sentence_note_id, sentence_text, lang)
+                VALUES (?, ?, ?, ?, ?)
+            """, [(l[0], l[1], l[2], l[3], lang) for l in links_to_insert])
 
             vocab_cache_data = [
-                (v["note_id"], v["word"], v["meaning"], v["pos"], vocab_counts.get(v["note_id"], 0))
+                (v["note_id"], v["word"], v["meaning"], v["pos"], vocab_counts.get(v["note_id"], 0), lang)
                 for v in vocabs
             ]
             cursor.executemany("""
-                INSERT INTO vocab_cache (note_id, word, meaning, pos, link_count)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO vocab_cache (note_id, word, meaning, pos, link_count, lang)
+                VALUES (?, ?, ?, ?, ?, ?)
             """, vocab_cache_data)
 
             conn.commit()
@@ -425,30 +501,32 @@ class LinkManager:
         }
 
     @classmethod
-    def get_stats(cls) -> Dict[str, Any]:
+    def get_stats(cls, lang: str = "en") -> Dict[str, Any]:
         init_db()
+        target_vocab_model = MODEL_ZH_VOCAB if lang == "zh" else MODEL_VOCAB
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM vocab_cache")
+            cursor.execute("SELECT COUNT(*) FROM vocab_cache WHERE lang = ?", (lang,))
             total_vocab = cursor.fetchone()[0]
 
-            cursor.execute("SELECT COUNT(DISTINCT sentence_note_id) FROM links")
+            cursor.execute("SELECT COUNT(DISTINCT sentence_note_id) FROM links WHERE lang = ?", (lang,))
             linked_sentences = cursor.fetchone()[0]
 
-            cursor.execute("SELECT COUNT(*) FROM links")
+            cursor.execute("SELECT COUNT(*) FROM links WHERE lang = ?", (lang,))
             total_links = cursor.fetchone()[0]
 
-            cursor.execute("SELECT COUNT(*) FROM vocab_cache WHERE link_count = 0")
+            cursor.execute("SELECT COUNT(*) FROM vocab_cache WHERE link_count = 0 AND lang = ?", (lang,))
             unlinked_vocab = cursor.fetchone()[0]
 
             leech_count = 0
             try:
-                # 단어(노트) 단위: 카드가 2장인 단어를 두 번 세지 않는다 (학술·희귀 태그 제외)
-                leech_notes = AnkiConnector.invoke(
-                    "findNotes",
-                    query=f'note:"{MODEL_VOCAB}" (prop:ease<=1.3 OR prop:lapses>=4) -is:suspended -tag:freq::tier4_academic -tag:freq::tier5_rare'
-                ) or []
-                # 처리했고 아직 재발하지 않은 단어는 뺀다 (목록과 같은 기준)
+                # 단어(노트) 단위: 카드가 2장인 단어를 두 번 세지 않는다
+                if lang == "zh":
+                    leech_q = f'note:"{target_vocab_model}" -is:new (prop:ease<=1.3 OR prop:lapses>=4) -is:suspended'
+                else:
+                    leech_q = f'note:"{target_vocab_model}" -is:new (prop:ease<=1.3 OR prop:lapses>=4) -is:suspended -tag:freq::tier4_academic -tag:freq::tier5_rare'
+
+                leech_notes = AnkiConnector.invoke("findNotes", query=leech_q) or []
                 from backend.services import leech_history
                 treated = leech_history.get_all()
                 pending = [n for n in leech_notes if n in treated]
@@ -479,20 +557,23 @@ class LinkManager:
         offset: int = 0,
         filter_mode: Optional[str] = None,
         max_links: Optional[int] = None,
-        search: Optional[str] = None
+        search: Optional[str] = None,
+        lang: str = "en"
     ) -> Dict[str, Any]:
         init_db()
+        target_vocab_model = MODEL_ZH_VOCAB if lang == "zh" else MODEL_VOCAB
 
         if filter_mode == "treated":
-            return cls._treated_list(limit, offset, search)
+            return cls._treated_list(limit, offset, search, lang=lang)
 
         # Handle leech filter mode
         if filter_mode == "leech":
             try:
-                anki_q = (
-                    f'note:"{MODEL_VOCAB}" (prop:ease<=1.3 OR prop:lapses>=4) '
-                    f'-is:suspended -tag:freq::tier4_academic -tag:freq::tier5_rare'
-                )
+                if lang == "zh":
+                    anki_q = f'note:"{target_vocab_model}" -is:new (prop:ease<=1.3 OR prop:lapses>=4) -is:suspended'
+                else:
+                    anki_q = f'note:"{target_vocab_model}" -is:new (prop:ease<=1.3 OR prop:lapses>=4) -is:suspended -tag:freq::tier4_academic -tag:freq::tier5_rare'
+
                 if search:
                     anki_q += f' "{search}"'
                 cached = _leech_cache.get(anki_q)
@@ -502,7 +583,6 @@ class LinkManager:
                     card_ids = AnkiConnector.invoke("findCards", query=anki_q) or []
                     all_cards = AnkiConnector.invoke("cardsInfo", cards=card_ids) if card_ids else []
 
-                    # 노트 단위로 묶는다 (단어 노트는 카드가 2장): 가장 나쁜 카드 기준
                     worst_by_note: Dict[int, Dict[str, Any]] = {}
                     for c in all_cards or []:
                         nid = c["note"]
@@ -512,7 +592,6 @@ class LinkManager:
                     ranked = sorted(worst_by_note.values(), key=lambda c: (-c.get("lapses", 0), c.get("factor", 0)))
                     _leech_cache[anki_q] = (time.time(), ranked)
 
-                # 처리한 단어는 숨기고, 처리 후 오답이 기준 이상 늘었으면 '재발'로 남긴다
                 from backend.services import leech_history
                 treated = leech_history.get_all()
                 treated_status: Dict[int, Dict[str, Any]] = {}
@@ -535,8 +614,8 @@ class LinkManager:
                     cursor = conn.cursor()
                     placeholders = ','.join('?' * len(note_ids)) if note_ids else '0'
                     cursor.execute(
-                        f"SELECT note_id, word, meaning, pos, link_count FROM vocab_cache WHERE note_id IN ({placeholders})",
-                        note_ids
+                        f"SELECT note_id, word, meaning, pos, link_count FROM vocab_cache WHERE note_id IN ({placeholders}) AND lang = ?",
+                        [*note_ids, lang] if note_ids else [lang]
                     )
                     cache_map = {row["note_id"]: dict(row) for row in cursor.fetchall()}
 
@@ -571,14 +650,13 @@ class LinkManager:
                     "items": items
                 }
             except Exception as e:
-                # Fallback to standard DB query on failure
                 pass
 
         with get_db_connection() as conn:
             cursor = conn.cursor()
 
-            query = "SELECT note_id, word, meaning, pos, link_count FROM vocab_cache WHERE 1=1"
-            params: List[Any] = []
+            query = "SELECT note_id, word, meaning, pos, link_count FROM vocab_cache WHERE lang = ?"
+            params: List[Any] = [lang]
 
             if filter_mode == "zero" or max_links == 0:
                 query += " AND link_count = 0"
@@ -610,7 +688,7 @@ class LinkManager:
             }
 
     @classmethod
-    def _treated_list(cls, limit: int, offset: int, search: Optional[str]) -> Dict[str, Any]:
+    def _treated_list(cls, limit: int, offset: int, search: Optional[str], lang: str = "en") -> Dict[str, Any]:
         """처리한 단어 목록: 처리 방법·시각과 처리 후 오답 수 (최근 처리 순)."""
         from backend.services import leech_history
         rows = sorted(leech_history.get_all().values(), key=lambda r: -r["treated_at"])
@@ -627,7 +705,8 @@ class LinkManager:
         with get_db_connection() as conn:
             placeholders = ",".join("?" * len(note_ids)) or "0"
             cache = {r["note_id"]: dict(r) for r in conn.execute(
-                f"SELECT note_id, word, meaning, pos, link_count FROM vocab_cache WHERE note_id IN ({placeholders})", note_ids)}
+                f"SELECT note_id, word, meaning, pos, link_count FROM vocab_cache WHERE note_id IN ({placeholders}) AND lang = ?",
+                [*note_ids, lang] if note_ids else [lang])}
         items = []
         for r in page:
             nid = r["note_id"]
@@ -646,7 +725,7 @@ class LinkManager:
         return {"total": len(rows), "limit": limit, "offset": offset, "items": items}
 
     @classmethod
-    def get_linked_sentences_for_vocab(cls, word: str) -> List[Dict[str, Any]]:
+    def get_linked_sentences_for_vocab(cls, word: str, lang: str = "en") -> List[Dict[str, Any]]:
         init_db()
         cleaned_word = clean_text(word).strip()
         with get_db_connection() as conn:
@@ -654,12 +733,12 @@ class LinkManager:
             cursor.execute("""
                 SELECT sentence_note_id, sentence_text
                 FROM links
-                WHERE lower(vocab_word) = lower(?)
-            """, (cleaned_word,))
+                WHERE lower(vocab_word) = lower(?) AND lang = ?
+            """, (cleaned_word, lang))
             return [dict(row) for row in cursor.fetchall()]
 
     @classmethod
-    def get_linked_vocab_for_sentence(cls, sentence_text: str) -> List[Dict[str, Any]]:
+    def get_linked_vocab_for_sentence(cls, sentence_text: str, lang: str = "en") -> List[Dict[str, Any]]:
         init_db()
         cleaned = clean_text(sentence_text).strip()
         with get_db_connection() as conn:
@@ -667,9 +746,9 @@ class LinkManager:
             cursor.execute("""
                 SELECT DISTINCT l.vocab_word, v.meaning, v.pos
                 FROM links l
-                LEFT JOIN vocab_cache v ON l.vocab_note_id = v.note_id
-                WHERE lower(l.sentence_text) = lower(?)
-            """, (cleaned,))
+                LEFT JOIN vocab_cache v ON l.vocab_note_id = v.note_id AND v.lang = ?
+                WHERE lower(l.sentence_text) = lower(?) AND l.lang = ?
+            """, (lang, cleaned, lang))
             rows = cursor.fetchall()
             return [
                 {
@@ -681,7 +760,7 @@ class LinkManager:
             ]
 
     @classmethod
-    def get_random_unlinked_vocab(cls, count: int = 20) -> List[Dict[str, Any]]:
+    def get_random_unlinked_vocab(cls, count: int = 20, lang: str = "en") -> List[Dict[str, Any]]:
         """미연결(link_count = 0) 단어 중 무작위 N개 추출"""
         init_db()
         with get_db_connection() as conn:
@@ -689,28 +768,28 @@ class LinkManager:
             cursor.execute("""
                 SELECT note_id, word, meaning, pos, link_count
                 FROM vocab_cache
-                WHERE link_count = 0
+                WHERE link_count = 0 AND lang = ?
                 ORDER BY RANDOM()
                 LIMIT ?
-            """, (count,))
+            """, (lang, count))
             return [dict(row) for row in cursor.fetchall()]
 
     @classmethod
-    def get_worst_leech_unlinked_vocab(cls, count: int = 20) -> List[Dict[str, Any]]:
-        """미연결(link_count = 0) 단어 중 가장 많이 틀린(Lapses 많은 순) 단어 N개 추출 (학술·희귀 제외)"""
+    def get_worst_leech_unlinked_vocab(cls, count: int = 20, lang: str = "en") -> List[Dict[str, Any]]:
+        """미연결(link_count = 0) 단어 중 가장 많이 틀린(Lapses 많은 순) 단어 N개 추출"""
         init_db()
         from integrations.anki_connect import AnkiConnector
-        from backend.services.corpus_service import is_leech_target_word
+        target_vocab_model = MODEL_ZH_VOCAB if lang == "zh" else MODEL_VOCAB
 
         card_lapses = {}
         try:
-            # lapses 높은 순 카드 검색 (prop:lapses>=3, 학술·희귀 태그 제외)
-            leech_cards = AnkiConnector.invoke(
-                'findCards',
-                query='note:"English Vocabulary" prop:lapses>=3 -tag:freq::tier4_academic -tag:freq::tier5_rare'
-            )
+            if lang == "zh":
+                leech_q = f'note:"{target_vocab_model}" prop:lapses>=3'
+            else:
+                leech_q = f'note:"{target_vocab_model}" prop:lapses>=3 -tag:freq::tier4_academic -tag:freq::tier5_rare'
+
+            leech_cards = AnkiConnector.invoke('findCards', query=leech_q)
             if leech_cards:
-                # 전체 카드를 보고 노트별 최대 lapses를 쓴다 (findCards 순서는 오답 수와 무관)
                 for c in AnkiConnector.invoke('cardsInfo', cards=leech_cards) or []:
                     card_lapses[c['note']] = max(card_lapses.get(c['note'], 0), c.get('lapses', 0))
         except Exception:
@@ -721,8 +800,8 @@ class LinkManager:
             cursor.execute("""
                 SELECT note_id, word, meaning, pos, link_count
                 FROM vocab_cache
-                WHERE link_count = 0
-            """)
+                WHERE link_count = 0 AND lang = ?
+            """, (lang,))
             zero_items = [dict(row) for row in cursor.fetchall()]
 
         matched = []
@@ -732,12 +811,11 @@ class LinkManager:
             if item['lapses'] > 0:
                 matched.append(item)
 
-        # lapses 내림차순 정렬
         matched.sort(key=lambda x: -x['lapses'])
         return matched[:count]
 
     @classmethod
-    def index_single_sentence(cls, sentence_note_id: int, sentence_text: str):
+    def index_single_sentence(cls, sentence_note_id: int, sentence_text: str, lang: str = "en"):
         """새로 생성된 단일 문장을 vocab_cache와 대조하여 즉시 links.db에 증분 반영"""
         init_db()
         cleaned_sentence = clean_text(sentence_text).strip()
@@ -746,27 +824,38 @@ class LinkManager:
 
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT note_id, word FROM vocab_cache")
+            cursor.execute("SELECT note_id, word FROM vocab_cache WHERE lang = ?", (lang,))
             vocabs = cursor.fetchall()
 
             links_to_add = []
             vocab_ids_to_increment = set()
 
-            for row in vocabs:
-                v_id = row["note_id"]
-                v_word = row["word"]
-                regex = PatternMatcher.build_regex(v_word)
-                if regex and regex.search(cleaned_sentence):
-                    links_to_add.append((v_id, v_word, sentence_note_id, cleaned_sentence))
-                    vocab_ids_to_increment.add(v_id)
+            if lang == "zh":
+                stop_1char = set("的了我你他在是有就不吗吧呢很들도")
+                for row in vocabs:
+                    v_id = row["note_id"]
+                    v_word = row["word"]
+                    if len(v_word) == 1 and v_word in stop_1char:
+                        continue
+                    if v_word in cleaned_sentence:
+                        links_to_add.append((v_id, v_word, sentence_note_id, cleaned_sentence, lang))
+                        vocab_ids_to_increment.add(v_id)
+            else:
+                for row in vocabs:
+                    v_id = row["note_id"]
+                    v_word = row["word"]
+                    regex = PatternMatcher.build_regex(v_word)
+                    if regex and regex.search(cleaned_sentence):
+                        links_to_add.append((v_id, v_word, sentence_note_id, cleaned_sentence, lang))
+                        vocab_ids_to_increment.add(v_id)
 
             if links_to_add:
                 cursor.executemany("""
-                    INSERT OR IGNORE INTO links (vocab_note_id, vocab_word, sentence_note_id, sentence_text)
-                    VALUES (?, ?, ?, ?)
+                    INSERT OR IGNORE INTO links (vocab_note_id, vocab_word, sentence_note_id, sentence_text, lang)
+                    VALUES (?, ?, ?, ?, ?)
                 """, links_to_add)
                 for v_id in vocab_ids_to_increment:
-                    cursor.execute("UPDATE vocab_cache SET link_count = link_count + 1 WHERE note_id = ?", (v_id,))
+                    cursor.execute("UPDATE vocab_cache SET link_count = link_count + 1 WHERE note_id = ? AND lang = ?", (v_id, lang))
                 conn.commit()
 
                 # 단어 카드의 '예문' 필드에 최대 5개 한도로 자동 덧붙임 (토큰 0개)

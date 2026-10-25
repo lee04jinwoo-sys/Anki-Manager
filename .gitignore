@@ -41,3 +41,7 @@ data/logs/
 
 # Model comparison runs (contain collection words)
 data/eval/
+
+# Local credentials and launcher output
+gcp-tts-key.json
+.launcher.log

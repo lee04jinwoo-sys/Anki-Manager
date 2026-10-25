@@ -51,4 +51,5 @@ export interface StatsOverview {
   decks: DeckStats[]
   rollover_hour: number
   desired_retention: number | null
+  lang?: 'en' | 'zh'
 }

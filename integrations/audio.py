@@ -61,6 +61,30 @@ class AnkiTTSFiller:
             return "", "Error"
 
     @classmethod
+    def generate_chinese_tts(cls, tts_client, text, pbar=None):
+        """중국어 전용 Chirp3-HD 1.0배속 TTS 생성"""
+        if not text: return "", "No Text"
+        clean_text = clean_html(text)
+        try:
+            from config import VOICE_LIST_ZH
+            synthesis_input = texttospeech.SynthesisInput(text=clean_text)
+            selected_voice_name = random.choice(VOICE_LIST_ZH)
+            voice = texttospeech.VoiceSelectionParams(language_code="cmn-CN", name=selected_voice_name)
+            audio_config = texttospeech.AudioConfig(
+                audio_encoding=texttospeech.AudioEncoding.MP3,
+                speaking_rate=1.0
+            )
+            response = tts_client.synthesize_speech(input=synthesis_input, voice=voice, audio_config=audio_config)
+            short_voice = selected_voice_name.split("-")[-1]
+            filename = f"anki_zh_chirp_{short_voice}_{uuid.uuid4().hex[:8]}.mp3"
+            b64_audio = base64.b64encode(response.audio_content).decode('utf-8')
+            stored = AnkiConnector.invoke("storeMediaFile", filename=filename, data=b64_audio) or filename
+            return f"[sound:{stored}]", selected_voice_name
+        except Exception as e:
+            _print(pbar, f"❌ Chinese Chirp3-HD TTS 에러: {e}")
+            return "", "Error"
+
+    @classmethod
     def generate_gtts(cls, text, pbar=None):
         if not text: return "", "No Text"
         clean_text = clean_html(text)

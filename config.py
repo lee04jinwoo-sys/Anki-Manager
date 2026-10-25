@@ -55,6 +55,10 @@ MODEL_GRAMMAR = "English Grammar"
 DECK_GRAMMAR = "1. Language::1.1. English::Grammar"
 DECK_KNOWLEDGE = "Knowledge"
 MODEL_KNOWLEDGE = "Knowledge Q&A"
+DECK_ZH_VOCAB = "1. Language::1.3. Chinese::Vocabulary"
+DECK_ZH_SENTENCE = "1. Language::1.3. Chinese::Sentence"
+MODEL_ZH_VOCAB = "Chinese Vocabulary"
+MODEL_ZH_SENTENCE = "Chinese Sentence"
 
 # --- File Paths ---
 CANDIDATES_FILE = 'candidates.json'
@@ -84,6 +88,13 @@ VOICE_LIST = [
     "en-GB-Chirp3-HD-Umbriel",
     "en-AU-Chirp3-HD-Kore",
     "en-AU-Chirp3-HD-Enceladus"
+]
+
+VOICE_LIST_ZH = [
+    "cmn-CN-Chirp3-HD-Charon",
+    "cmn-CN-Chirp3-HD-Achird",
+    "cmn-CN-Chirp3-HD-Achernar",
+    "cmn-CN-Chirp3-HD-Aoede"
 ]
 
 TARGET_NOTE_TYPES_FOR_AUDIO = '"note:English Speaking" OR "note:English Grammar" OR "note:English Sentence" OR "note:English Vocabulary"'
@@ -118,6 +129,26 @@ NOTE_COMPLETOR_SYS_INSTRUCT = """전문 영어 학습 자료 제작자입니다.
 VOCAB_SELECTOR_SYS_INSTRUCT = "영어 학습 자료 선별 전문가입니다. 반드시 JSON으로만 응답하세요."
 SENTENCE_SELECTOR_SYS_INSTRUCT = "영어 학습 자료 연구원입니다. 반드시 JSON으로만 응답하세요."
 SITUATION_GENERATOR_SYS_INSTRUCT = "최고 수준의 영어 회화 전문 강사입니다. 반드시 JSON으로만 응답하세요."
+
+NOTE_COMPLETOR_ZH_SYS_INSTRUCT = """전문 중국어(보통화) 교육 전문가입니다. 초급~중초급(A1~A2, 최대 HSK 3~4급) 학습자를 위한 카드를 제작합니다. 반드시 JSON 형식으로만 응답하세요.
+[규칙]
+1. 표기 표준화:
+   - 모든 한자는 반드시 **간체자(Simplified Chinese)**로 표기합니다.
+   - 한어병음(한어병음)은 성조 부호(ā, á, ǎ, à)를 포함한 소문자 알파벳으로 작성합니다 (예: nǐ hǎo, tiānqì).
+2. 단어 카드 (Chinese Vocabulary):
+   - 단어: 간체자 표기 (예: 天气)
+   - 뜻: 정확하고 자연스러운 한국어 뜻 (슬래시(/) 절대 금지, 쉼표(,)로 구분. 예: '날씨, 일기')
+   - 한어병음: 성조 부호 포함 병음 (예: tiānqì)
+   - 품사: 명사, 동사, 형용사, 대명사, 양사, 부사, 전치사, 접속사, 조사, idiom 중 하나 (쉼표 구분)
+   - 예문: 
+     * 엄격 제약: 반드시 HSK 1~3급 수준의 기초 어휘로만 구성할 것. 문장 길이는 6~14자 이내의 짧고 명확한 단문/기본문.
+     * 형식: 반드시 `중국어_간체자_문장 (성조_포함_병음 / 자연스러운_한국어_번역)` 형태로 작성.
+     * 단어당 2개의 서로 다른 실용 예문을 ` ||| ` 구분자로 연결하여 제공.
+     * 예시: `今天天气很好。 (jīntiān tiānqì hěn hǎo. / 오늘 날씨가 매우 좋다.) ||| 明天的天气怎么样？ (míngtiān de tiānqì zěnmeyàng? / 내일 날씨는 어때요?)`
+3. 문장 카드 (Chinese Sentence):
+   - 문장: 오타가 교정된 간체자 완결 문장
+   - 한어병음: 문장 전체의 정확한 성조 병음
+   - 뜻: 자연스러운 한국어 번역"""
 
 # --- Note Type Configuration (Design & Templates) ---
 NOTE_TYPES_CONFIG = {
