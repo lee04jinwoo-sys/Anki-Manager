@@ -107,7 +107,7 @@ def backup_templates() -> Optional[str]:
         "models": {}
     }
     
-    for model_name in [MODEL_VOCAB, MODEL_SENTENCE, MODEL_GRAMMAR]:
+    for model_name in [MODEL_VOCAB, MODEL_SENTENCE, MODEL_GRAMMAR, MODEL_ZH_VOCAB, MODEL_ZH_SENTENCE]:
         try:
             templates = AnkiConnector.invoke("modelTemplates", modelName=model_name)
             styling = AnkiConnector.invoke("modelStyling", modelName=model_name)

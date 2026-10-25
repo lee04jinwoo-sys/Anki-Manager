@@ -57,7 +57,7 @@ SENTENCE_BACK_TEMPLATE = r"""<style>
     var rawText = (textEl.textContent || textEl.innerText || "").trim();
     if (!rawText) return;
 
-    fetch("http://127.0.0.1:8001/api/links/badge/sentence?text=" + encodeURIComponent(rawText))
+    fetch("http://127.0.0.1:8011/api/links/badge/sentence?text=" + encodeURIComponent(rawText))
       .then(function(r) { return r.json(); })
       .then(function(d) {
         if (!d) return;
