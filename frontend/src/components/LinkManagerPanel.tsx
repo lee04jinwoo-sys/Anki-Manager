@@ -92,6 +92,8 @@ export const LinkManagerPanel: React.FC<LinkManagerPanelProps> = ({
 
   // Reset selection and mode on language switch
   useEffect(() => {
+    setStats(null)
+    setCorpusStats(null)
     setSelectedMap(new Map())
     setOffset(0)
     setFilterMode(language === 'zh' ? 'all' : 'leech')
