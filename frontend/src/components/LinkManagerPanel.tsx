@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useTransition } from 'react'
+import React, { useState, useEffect, useCallback, useRef, useTransition } from 'react'
 import {
   Search,
   RotateCcw,
@@ -25,6 +25,7 @@ import type { CorpusAuditStats } from '../types/corpus'
 import { PromoteChunkModal } from './modals/PromoteChunkModal'
 import { PromoteReviewModal } from './modals/PromoteReviewModal'
 import { LEECH_ACTIONS, actionLabel, choiceFor, planActions } from '../lib/leechPlan'
+import { createLatestRequest } from '../lib/latestRequest'
 
 const TIER_LABELS: Record<string, string> = {
   'freq::tier1_essential': '필수',
@@ -115,14 +116,20 @@ export const LinkManagerPanel: React.FC<LinkManagerPanelProps> = ({
     return () => clearTimeout(timer)
   }, [searchQuery])
 
+  const latestStats = useRef(createLatestRequest())
+  const latestVocab = useRef(createLatestRequest())
+
   // Load stats
   const fetchStats = useCallback(async () => {
+    const isCurrent = latestStats.current.begin()
     try {
       const res = await api.getLinkStats(language)
+      if (!isCurrent()) return
       setStats(res)
       if (language === 'en') {
         try {
           const cRes = await api.getCorpusAuditStats()
+          if (!isCurrent()) return
           setCorpusStats(cRes)
         } catch (ce) {
           console.warn('Corpus stats not loaded:', ce)
@@ -142,6 +149,7 @@ export const LinkManagerPanel: React.FC<LinkManagerPanelProps> = ({
 
   // Load vocab list
   const fetchVocab = useCallback(async () => {
+    const isCurrent = latestVocab.current.begin()
     setIsLoading(true)
     setError(null)
     try {
@@ -152,15 +160,17 @@ export const LinkManagerPanel: React.FC<LinkManagerPanelProps> = ({
         search: debouncedSearch || undefined,
         lang: language,
       })
+      if (!isCurrent()) return
       setVocabData(res)
     } catch (e) {
+      if (!isCurrent()) return
       setError(
         e instanceof Error
           ? e.message
           : '어휘 목록을 불러오는 중 오류가 발생했습니다.',
       )
     } finally {
-      setIsLoading(false)
+      if (isCurrent()) setIsLoading(false)
     }
   }, [filterMode, offset, debouncedSearch, language])
 

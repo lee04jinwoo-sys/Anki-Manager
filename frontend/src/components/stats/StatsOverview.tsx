@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { api } from '../../api/client'
 import type { StatsOverview as Stats } from '../../types/stats'
@@ -7,6 +7,7 @@ import { Heatmap } from './Heatmap'
 import { ForecastChart } from './ForecastChart'
 import { RetentionChart } from './RetentionChart'
 import { DeckTable } from './DeckTable'
+import { createLatestRequest } from '../../lib/latestRequest'
 
 /** 학습 통계 영역. refreshKey나 language가 바뀌면 다시 불러온다. */
 export const StatsOverview: React.FC<{ refreshKey: number; language?: 'en' | 'zh' }> = ({
@@ -16,11 +17,17 @@ export const StatsOverview: React.FC<{ refreshKey: number; language?: 'en' | 'zh
   const [data, setData] = useState<Stats | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  const latest = useRef(createLatestRequest())
+
   const load = useCallback(async () => {
+    const isCurrent = latest.current.begin()
     try {
-      setData(await api.getStatsOverview(language))
+      const res = await api.getStatsOverview(language)
+      if (!isCurrent()) return
+      setData(res)
       setError(null)
     } catch (e) {
+      if (!isCurrent()) return
       setError(e instanceof Error ? e.message : '통계를 불러오지 못했습니다.')
     }
   }, [language])

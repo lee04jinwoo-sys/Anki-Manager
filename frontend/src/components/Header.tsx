@@ -68,7 +68,7 @@ export const Header: React.FC<HeaderProps> = ({
               onClick={() => onLanguageChange('en')}
               className={`px-2.5 py-1 rounded-[6px] font-medium transition-all ${
                 activeLanguage === 'en'
-                  ? 'bg-white text-apple-text shadow-sm dark:bg-apple-card font-semibold'
+                  ? 'bg-apple-borderStrong text-apple-text shadow-sm font-semibold'
                   : 'text-apple-secondary hover:text-apple-text'
               }`}
             >
@@ -79,7 +79,7 @@ export const Header: React.FC<HeaderProps> = ({
               onClick={() => onLanguageChange('zh')}
               className={`px-2.5 py-1 rounded-[6px] font-medium transition-all ${
                 activeLanguage === 'zh'
-                  ? 'bg-white text-apple-text shadow-sm dark:bg-apple-card font-semibold'
+                  ? 'bg-apple-borderStrong text-apple-text shadow-sm font-semibold'
                   : 'text-apple-secondary hover:text-apple-text'
               }`}
             >
