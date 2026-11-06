@@ -38,6 +38,10 @@ class Route:
 DEFAULT_ROUTES = [
     Route("gemini-free", "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
           "gemini-2.5-flash", "GEMINI_FREE_API_KEY"),
+    # 무료 flash는 503(high demand)이 잦다 (2026-11-06 실측 3회 중 2회). 같은 무료 키의 flash-lite는
+    # 유료 키로 쓰던 모델과 같아서 품질 손해 없이 비용만 아낀다.
+    Route("gemini-free-lite", "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+          "gemini-2.5-flash-lite", "GEMINI_FREE_API_KEY"),
     Route("groq", "https://api.groq.com/openai/v1/chat/completions",
           "openai/gpt-oss-120b", "GROQ_API_KEY"),
     Route("cerebras", "https://api.cerebras.ai/v1/chat/completions",

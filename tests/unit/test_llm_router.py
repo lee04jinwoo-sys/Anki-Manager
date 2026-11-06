@@ -138,6 +138,14 @@ def test_routes_can_be_overridden_from_settings(monkeypatch):
     assert routes == [Route("custom", "https://c.example/v1/chat/completions", "m", "KEY_C")]
 
 
+def test_free_flash_lite_backs_up_free_flash():
+    """2026-11-06 서버 실측: 무료 키 gemini-2.5-flash는 503(high demand)이 잦고,
+    같은 키의 flash-lite는 3/3 성공. flash 다음에 무료 flash-lite를 둔다 (유료 키와 같은 모델)."""
+    first, second = llm_router.DEFAULT_ROUTES[:2]
+    assert (first.model, first.key_env) == ("gemini-2.5-flash", "GEMINI_FREE_API_KEY")
+    assert (second.model, second.key_env) == ("gemini-2.5-flash-lite", "GEMINI_FREE_API_KEY")
+
+
 def test_default_routes_contain_no_llama():
     """한국어 품질이 약한 Llama 계열은 기본 목록에 넣지 않는다."""
     assert all("llama" not in r.model.lower() for r in llm_router.DEFAULT_ROUTES)
