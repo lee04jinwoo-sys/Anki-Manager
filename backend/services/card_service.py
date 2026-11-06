@@ -154,7 +154,7 @@ def create_sentence_card(req: SentenceCreateRequest) -> CardResponse:
     # 1. Enrich translation if missing
     if not translation and req.auto_enrich:
         try:
-            completer = NoteCompleter()
+            completer = NoteCompleter(use_router=req.use_free_router)
             res = completer.enrich_sentences([text])
             if res and isinstance(res[0], dict) and "해설" in res[0]:
                 translation = res[0]["해설"]
@@ -288,7 +288,7 @@ def create_vocab_card(req: VocabCreateRequest) -> CardResponse:
     # 1. AI Enrichment if needed
     if req.auto_enrich and (not meaning or not example):
         try:
-            completer = NoteCompleter()
+            completer = NoteCompleter(use_router=req.use_free_router)
             enriched = completer.enrich_vocab([{"단어": norm_word, "뜻": meaning}])
             if enriched and len(enriched) > 0:
                 v = enriched[0]

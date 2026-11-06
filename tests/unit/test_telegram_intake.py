@@ -53,7 +53,7 @@ def test_vocab_goes_to_vocab_endpoint_and_reply_shows_meaning():
 
     reply = ti.handle_text("serendipity", ALLOWED, ALLOWED, backend)
 
-    assert backend.calls == [("/api/cards/vocab", {"word": "serendipity"})]
+    assert backend.calls == [("/api/cards/vocab", {"word": "serendipity", "use_free_router": True})]
     assert "serendipity" in reply and "뜻밖의 행운" in reply and "단어" in reply
 
 
@@ -63,7 +63,7 @@ def test_sentence_goes_to_sentence_endpoint_and_reply_shows_translation():
 
     reply = ti.handle_text("No way!", ALLOWED, ALLOWED, backend)
 
-    assert backend.calls == [("/api/cards/sentence", {"sentence": "No way!"})]
+    assert backend.calls == [("/api/cards/sentence", {"sentence": "No way!", "use_free_router": True})]
     assert "말도 안 돼!" in reply and "문장" in reply
 
 
@@ -198,9 +198,9 @@ def test_multiple_lines_are_registered_separately_with_one_reply():
     reply = ti.handle_text("serendipity\n\nNo way!\n  break the ice ", ALLOWED, ALLOWED, backend,
                            on_added=lambda: added.append(1))
 
-    assert backend.calls == [("/api/cards/vocab", {"word": "serendipity"}),
-                             ("/api/cards/sentence", {"sentence": "No way!"}),
-                             ("/api/cards/vocab", {"word": "break the ice"})]
+    assert backend.calls == [("/api/cards/vocab", {"word": "serendipity", "use_free_router": True}),
+                             ("/api/cards/sentence", {"sentence": "No way!", "use_free_router": True}),
+                             ("/api/cards/vocab", {"word": "break the ice", "use_free_router": True})]
     assert "serendipity" in reply and "No way!" in reply and "break the ice" in reply
     assert "3" in reply.splitlines()[0]          # 첫 줄 요약에 처리 개수
     assert added == [1]                          # 동기화는 한 번만

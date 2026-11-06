@@ -61,8 +61,8 @@ def _format_reply(kind, res):
 def _register(body, post_backend):
     """한 줄을 등록한다. (답장 문자열, 새 카드인지, note_id)를 돌려준다."""
     kind, body = classify(body)
-    path, payload = (("/api/cards/sentence", {"sentence": body}) if kind == "sentence"
-                     else ("/api/cards/vocab", {"word": body}))
+    path, payload = (("/api/cards/sentence", {"sentence": body, "use_free_router": True}) if kind == "sentence"
+                     else ("/api/cards/vocab", {"word": body, "use_free_router": True}))
     try:
         res = post_backend(path, payload)
     except Exception as e:  # 한 줄의 실패가 봇 전체를 멈추지 않게

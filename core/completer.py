@@ -45,6 +45,7 @@ from config import (
     GEMINI_DEFAULT_TEMPERATURE, DECK_SENTENCE, MODEL_SENTENCE,
     DECK_VOCAB, MODEL_VOCAB, NOTE_ENRICH_PROGRESS_RATIO
 )
+from core.llm_router import AllRoutesFailed, generate_json
 from integrations.anki_connect import AnkiConnector
 from utils.pos_automator import get_simple_pos, setup_nltk
 from utils.timestamp_matcher import find_best_timestamp
@@ -71,30 +72,42 @@ def _normalize_translation_key(item):
 
 
 class NoteCompleter:
-    def __init__(self, pbar=None):
+    def __init__(self, pbar=None, use_router=False):
         self.client = genai.Client(api_key=GOOGLE_API_KEY)
         self.model_id = NOTE_COMPLETOR_MODEL
         self.sys_instruct = NOTE_COMPLETOR_SYS_INSTRUCT
         self.pbar = pbar
+        # True면 무료 등급 모델(core/llm_router)부터 시도하고, 전부 실패할 때만 아래 유료 키로 간다
+        self.use_router = use_router
+
+    def _generate_paid(self, prompt):
+        response = self.client.models.generate_content(
+            model=self.model_id,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=self.sys_instruct,
+                response_mime_type="application/json",
+                temperature=GEMINI_DEFAULT_TEMPERATURE
+            )
+        )
+        try:
+            # strict=False allows unescaped control characters like literal newlines inside strings
+            return json.loads(response.text, strict=False)
+        except Exception as json_err:
+            _print(self.pbar, f"❌ Raw AI response text:\n{response.text}")
+            raise json_err
 
     def _generate(self, prompt):
         try:
-            response = self.client.models.generate_content(
-                model=self.model_id,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    system_instruction=self.sys_instruct,
-                    response_mime_type="application/json",
-                    temperature=GEMINI_DEFAULT_TEMPERATURE
-                )
-            )
-            try:
-                # strict=False allows unescaped control characters like literal newlines inside strings
-                res = json.loads(response.text, strict=False)
-            except Exception as json_err:
-                _print(self.pbar, f"❌ Raw AI response text:\n{response.text}")
-                raise json_err
-            
+            res = None
+            if self.use_router:
+                try:
+                    res, _ = generate_json(self.sys_instruct, prompt, GEMINI_DEFAULT_TEMPERATURE)
+                except AllRoutesFailed as e:
+                    _print(self.pbar, f"⚠️ 무료 모델 전부 실패, 유료 키로 전환: {e}")
+            if res is None:
+                res = self._generate_paid(prompt)
+
             # AI가 리스트를 반환한 경우 첫 번째 요소만 사용하거나 딕셔너리로 변환 시도
             if isinstance(res, list) and len(res) > 0:
                 res = res[0]
