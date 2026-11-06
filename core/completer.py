@@ -259,16 +259,23 @@ class NoteCompleter:
             '반환 형식: {"notes": [{"id": "<id>", "<필드명>": "<값>"}]}\n\n'
             f"[노트]:\n{json.dumps(payload, ensure_ascii=False)}"
         )
-        response = self.client.models.generate_content(
-            model=self.model_id,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=self.sys_instruct,
-                response_mime_type="application/json",
-                temperature=GEMINI_DEFAULT_TEMPERATURE,
-            ),
-        )
-        data = json.loads(response.text, strict=False)
+        data = None
+        if self.use_router:
+            try:
+                data, _ = generate_json(self.sys_instruct, prompt, GEMINI_DEFAULT_TEMPERATURE)
+            except AllRoutesFailed as e:
+                _print(self.pbar, f"⚠️ 무료 모델 묶음 보강 실패, 유료 키로 전환: {e}")
+        if data is None:
+            response = self.client.models.generate_content(
+                model=self.model_id,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=self.sys_instruct,
+                    response_mime_type="application/json",
+                    temperature=GEMINI_DEFAULT_TEMPERATURE,
+                ),
+            )
+            data = json.loads(response.text, strict=False)
         items = data.get("notes", []) if isinstance(data, dict) else data
         out = {}
         for it in items or []:
@@ -296,7 +303,7 @@ def run_universal_field_completion(pbar=None):
         }
     }
     
-    completer = NoteCompleter(pbar=pbar)
+    completer = NoteCompleter(pbar=pbar, use_router=True)
     total_updated = 0
     
     for model_name, config in models_config.items():
@@ -435,7 +442,7 @@ def run_note_completion(sentences_data, vocab_data, pbar=None, step_points=0, in
         s_list = inspected_data.get("sentences", [])
         v_list = inspected_data.get("vocab", [])
 
-    completer = NoteCompleter(pbar=pbar)
+    completer = NoteCompleter(pbar=pbar, use_router=True)
     step_amt = step_points * (1.0 - NOTE_ENRICH_PROGRESS_RATIO) / 2.0
     
     # 2. 사용자가 최종 선택한 데이터만 AI로 보강 (로딩 최적화)

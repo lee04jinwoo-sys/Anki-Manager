@@ -43,6 +43,9 @@ def anki(monkeypatch):
             "보기2": "to meet", "보기3": "met"}
 
     class FakeCompleter:
+        def __init__(self, **kw):
+            pass
+
         def complete_fields_batch(self, model_name, notes):
             (n,) = notes
             state["completer_calls"].append((model_name, n["main"], dict(n["current"]), list(n["missing"])))

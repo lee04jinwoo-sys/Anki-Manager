@@ -117,13 +117,9 @@ class AnkiTTSFiller:
             if note['type'] == "vocab":
                 tag, method = cls.generate_gtts(note['text'], pbar=pbar)
             else:
-                # GCP TTS 시도, 실패 시 gTTS로 폴백
+                # 문장은 오직 GCP Chirp/Studio만 시도 (실패 시 gTTS 폴백 없이 빈 상태 유지)
                 if tts_client:
                     tag, method = cls.generate_random_tts(tts_client, note['text'], pbar=pbar)
-                
-                if not tag:
-                    _print(pbar, f"🔄 {note['text'][:10]}... gTTS로 폴백 시도")
-                    tag, method = cls.generate_gtts(note['text'], pbar=pbar)
             
             if tag:
                 AnkiConnector.update_note_fields(note['id'], {"소리": tag})

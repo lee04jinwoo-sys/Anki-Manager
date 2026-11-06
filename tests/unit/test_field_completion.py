@@ -35,7 +35,7 @@ def env(monkeypatch):
     calls = {"batch": [], "single": []}
 
     class FakeCompleter:
-        def __init__(self, pbar=None):
+        def __init__(self, pbar=None, **kw):
             pass
 
         def complete_fields(self, model, main_val, current, missing):

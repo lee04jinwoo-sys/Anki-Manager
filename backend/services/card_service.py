@@ -98,13 +98,9 @@ def generate_sentence_audio(text: str) -> str:
         except Exception as err:
             logger.warning(f"GCP TTS failed for '{clean_text}': {err}")
 
-    # 2. Fallback to gTTS
-    try:
-        sound_tag, _ = AnkiTTSFiller.generate_gtts(clean_text)
-        return sound_tag
-    except Exception as e:
-        logger.error(f"gTTS fallback error: {e}")
-        return ""
+    # 문장 카드는 GCP Chirp/Studio 실패 시 gTTS로 폴백하지 않고 빈 소리로 남김
+    logger.warning(f"Sentence audio generation skipped (Chirp unavailable/failed) for: {clean_text[:20]}...")
+    return ""
 
 
 def add_notes_skipping_failures(notes: List[Dict[str, Any]]) -> List[Optional[int]]:
@@ -458,7 +454,7 @@ def create_grammar_card(req: GrammarCreateRequest) -> CardResponse:
         current = {k: v for k, v in fields.items() if v and k != "소리"}
         try:
             # complete_fields_batch는 반환 형식을 명시한다 (complete_fields는 시스템 지침의 다른 스키마로 답한다)
-            generated = NoteCompleter().complete_fields_batch(
+            generated = NoteCompleter(use_router=True).complete_fields_batch(
                 MODEL_GRAMMAR, [{"id": 1, "main": sentence, "current": current, "missing": missing}]).get("1") or {}
         except Exception as e:
             logger.warning(f"Grammar enrichment failed: {e}")
