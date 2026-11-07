@@ -72,12 +72,12 @@ def _normalize_translation_key(item):
 
 
 class NoteCompleter:
-    def __init__(self, pbar=None, use_router=False):
+    def __init__(self, pbar=None, use_router=True):
         self.client = genai.Client(api_key=GOOGLE_API_KEY)
         self.model_id = NOTE_COMPLETOR_MODEL
         self.sys_instruct = NOTE_COMPLETOR_SYS_INSTRUCT
         self.pbar = pbar
-        # True면 무료 등급 모델(core/llm_router)부터 시도하고, 전부 실패할 때만 아래 유료 키로 간다
+        # True면 무료 등급 모델(core/llm_router)부터 시도하고, 전부 실패할 때만 아래 유료 키로 간다 (기본 True)
         self.use_router = use_router
 
     def _generate_paid(self, prompt):

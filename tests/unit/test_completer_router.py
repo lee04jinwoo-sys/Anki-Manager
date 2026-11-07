@@ -56,15 +56,26 @@ def test_router_failure_falls_back_to_paid_gemini(gemini, monkeypatch):
     assert gemini.calls == 1
 
 
-def test_router_is_not_used_by_default(gemini, monkeypatch):
-    def must_not_call(*a, **k):
-        raise AssertionError("router used without use_router=True")
-
-    monkeypatch.setattr(completer_mod, "generate_json", must_not_call)
+def test_router_is_used_by_default(gemini, monkeypatch):
+    """기본 NoteCompleter() 인스턴스화 시 무료 라우터를 기본으로 사용한다."""
+    monkeypatch.setattr(completer_mod, "generate_json",
+                        lambda *a, **k: ({"vocab": [{"단어": "luck", "뜻": "기본무료답"}]}, "free-a"))
 
     res = NoteCompleter().enrich_vocab([{"단어": "luck", "뜻": ""}])
 
-    assert res[0]["뜻"] == "유료키 답"
+    assert res[0]["뜻"] == "기본무료답"
+    assert gemini.calls == 0
+
+
+def test_schema_requests_default_to_free_router():
+    """웹 대시보드/API 요청 기본값이 use_free_router=True 다."""
+    from backend.schemas.cards import SentenceCreateRequest, VocabCreateRequest
+
+    req_v = VocabCreateRequest(word="luck")
+    assert req_v.use_free_router is True
+
+    req_s = SentenceCreateRequest(sentence="Hello world")
+    assert req_s.use_free_router is True
 
 
 def test_router_answer_goes_through_same_cleanup(gemini, monkeypatch):

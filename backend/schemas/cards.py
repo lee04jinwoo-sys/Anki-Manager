@@ -15,7 +15,7 @@ class SentenceCreateRequest(BaseModel):
     translation: Optional[str] = ""
     auto_enrich: bool = True
     generate_audio: bool = True
-    use_free_router: bool = False  # True면 무료 등급 모델부터 시도 (텔레그램 경로)
+    use_free_router: bool = True  # True면 무료 등급 모델부터 시도 (기본 활성화)
 
 class SentenceBulkCreateRequest(BaseModel):
     items: List[SentenceItem]
@@ -39,7 +39,7 @@ class VocabCreateRequest(BaseModel):
     explanation: Optional[str] = ""
     auto_enrich: bool = True
     generate_audio: bool = True
-    use_free_router: bool = False  # True면 무료 등급 모델부터 시도 (텔레그램 경로)
+    use_free_router: bool = True  # True면 무료 등급 모델부터 시도 (기본 활성화)
 
 class VocabBulkCreateRequest(BaseModel):
     items: List[VocabItem]
