@@ -48,8 +48,9 @@ def synthesize_audio_with_retry(text: str, is_vocab: bool = True, max_retries: i
             short_voice = voice_name.split("-")[-1]
             filename = f"anki_zh_chirp_{short_voice}_{uuid.uuid4().hex[:8]}.mp3"
             b64_data = base64.b64encode(res.audio_content).decode("utf-8")
-            AnkiConnector.invoke("storeMediaFile", filename=filename, data=b64_data)
-            return f"[sound:{filename}]"
+            # Tag the name Anki actually stored (Linux server lowercases it).
+            stored = AnkiConnector.invoke("storeMediaFile", filename=filename, data=b64_data) or filename
+            return f"[sound:{stored}]"
         except Exception as e:
             last_err = e
             if "429" in str(e) or "Resource has been exhausted" in str(e):

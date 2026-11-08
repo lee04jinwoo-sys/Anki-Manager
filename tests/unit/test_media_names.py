@@ -46,3 +46,29 @@ def test_gtts_tag_uses_the_stored_name(monkeypatch):
     monkeypatch.setattr(audio, "gTTS", FakeGTTS)
     tag, method = AnkiTTSFiller.generate_gtts("hello")
     assert tag == "[sound:stored_name.mp3]"
+
+
+def test_chinese_chirp_tag_uses_the_stored_name(monkeypatch):
+    calls = []
+    monkeypatch.setattr(audio.AnkiConnector, "invoke", staticmethod(lowercasing_store(calls)))
+    tag, _ = AnkiTTSFiller.generate_chinese_tts(FakeTTSClient(), "你好")
+    requested = calls[0][1]["filename"]
+    assert requested != requested.lower()
+    assert tag == f"[sound:{requested.lower()}]"
+
+
+def test_batch_replace_chinese_audio_uses_the_stored_name(monkeypatch):
+    import sys
+    import types
+    from google.cloud import texttospeech
+    monkeypatch.setattr(texttospeech, "TextToSpeechClient", lambda *a, **k: FakeTTSClient())
+    sys.modules.pop("scripts.batch_replace_chinese_audio", None)
+    sys.path.insert(0, ".")
+    import importlib
+    mod = importlib.import_module("scripts.batch_replace_chinese_audio")
+    calls = []
+    monkeypatch.setattr(mod.AnkiConnector, "invoke", staticmethod(lowercasing_store(calls)))
+    tag = mod.synthesize_audio_with_retry("你好")
+    requested = calls[0][1]["filename"]
+    assert requested != requested.lower()
+    assert tag == f"[sound:{requested.lower()}]"
