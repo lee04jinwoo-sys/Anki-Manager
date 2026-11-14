@@ -8,8 +8,7 @@ FastAPI 백엔드가 AnkiConnect와 Gemini를 호출하고, React 프론트엔�
 
 | 영역 | 내용 |
 |---|---|
-| 대시보드 | English 하위 덱별 신규/Due/학습 중/성숙 카드, 30일 정답률, Leech 현황, Obsidian Inbox 대기 수 |
-| Obsidian 가져오기 | `Anki_Inbox.md`의 `## Sentences` / `## Vocab` 항목을 선택 → Gemini로 뜻·예문·번역 보강 → Anki 등록. **실제로 등록된 항목만** Inbox에서 지웁니다. |
+| 대시보드 | English 하위 덱별 신규/Due/학습 중/성숙 카드, 30일 정답률, Leech 현황 |
 | 노트 정리 | 빈 필드 채우기(AI), TTS 오디오, 규칙별 덱 이동, 품사 자동 입력(NLTK), 중복 정리. 백그라운드 작업으로 실행되며 단계 사이에서 취소할 수 있습니다. |
 | 링크 매니저 | 단어 ↔ 문장 역색인(`data/links.db`), 연결이 적은 단어에 예문 일괄 생성, 카드 뒷면 어휘 강조 템플릿 주입 |
 | 청크 승격 | Leech 단어를 고빈도 연어/청크로 교체하고 카드를 새 카드로 초기화 |
@@ -34,7 +33,6 @@ cd frontend && npm install && npm run build && cd ..
 ```
 
 `.env`에 `GOOGLE_API_KEY`(Gemini)를 넣습니다. Google Cloud TTS 인증이 없으면 gTTS로 대체됩니다.
-Obsidian 볼트 경로와 Inbox 파일명은 `data/settings.json`의 `OBSIDIAN_VAULT_PATH`, `OBSIDIAN_INBOX_FILE`로 바꿀 수 있습니다.
 
 ## 실행
 
@@ -59,9 +57,9 @@ Anki를 켠 상태에서 `http://localhost:8001`을 엽니다. 프론트엔드 �
 ```
 server.py, main.py        FastAPI 앱 / 실행 진입점
 backend/routers           HTTP 엔드포인트 (/api/...)
-backend/services          카드 등록, 노트 정리, Obsidian 가져오기, 코퍼스, 작업 관리(JobManager)
+backend/services          카드 등록, 노트 정리, 코퍼스, 작업 관리(JobManager)
 core/                     Gemini 보강(completer), 링크 역색인(link_manager), 예문 일괄 생성
-integrations/             AnkiConnect, TTS, Obsidian
+integrations/             AnkiConnect, TTS
 utils/                    덱 이동, 중복 정리, 품사, 디자인 백업, 통계
 scripts/                  일회성 마이그레이션·점검 스크립트
 frontend/                 React 19 + Vite + Tailwind

@@ -17,13 +17,6 @@ def test_dashboard_skips_unused_deck_stats(monkeypatch):
         return []
 
     monkeypatch.setattr(AnkiConnector, "invoke", staticmethod(invoke))
-    from backend.routers import dashboard
-
-    class NoInbox:
-        def fetch_inbox_content(self):
-            return None
-
-    monkeypatch.setattr(dashboard, "ObsidianManager", NoInbox)
     import server
     r = TestClient(server.app).get("/api/dashboard")
     assert r.status_code == 200
@@ -52,23 +45,3 @@ def test_corpus_audit_stats_reports_generated_at(monkeypatch, tmp_path):
     monkeypatch.setattr(corpus_service, "AUDIT_JSON_PATH", f)
     res = corpus_service.CorpusService.get_audit_stats()
     assert res.total_notes == 3 and res.generated_at is not None
-
-
-def test_inbox_unavailable_when_vault_folder_missing(monkeypatch, tmp_path):
-    """서버처럼 Obsidian 볼트가 없으면 Inbox는 '사용 불가'이고, 파일을 만들려고 하지 않는다."""
-    monkeypatch.setattr(AnkiConnector, "invoke", staticmethod(lambda action, **p: 6 if action == "version" else []))
-    from backend.routers import dashboard
-
-    touched = []
-
-    class Spy:
-        def fetch_inbox_content(self):
-            touched.append(1)
-            return {"vocab": [], "sentences": []}
-
-    monkeypatch.setattr(dashboard, "ObsidianManager", Spy)
-    monkeypatch.setattr(dashboard, "OBSIDIAN_VAULT_PATH", str(tmp_path / "no-vault"))
-    import server
-    inbox = TestClient(server.app).get("/api/dashboard").json()["obsidian_inbox"]
-    assert inbox["available"] is False
-    assert touched == []

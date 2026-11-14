@@ -4,7 +4,6 @@ import { StatsOverview } from './components/stats/StatsOverview'
 import { LinkManagerPanel } from './components/LinkManagerPanel'
 import { JobDrawer } from './components/JobDrawer'
 import { MaintenanceModal } from './components/modals/MaintenanceModal'
-import { ObsidianModal } from './components/modals/ObsidianModal'
 import { DesignModal } from './components/modals/DesignModal'
 import type { DashboardResponse, JobState } from './types/dashboard'
 import { api } from './api/client'
@@ -51,7 +50,6 @@ export const App: React.FC = () => {
 
   // Modals state
   const [isMaintenanceOpen, setIsMaintenanceOpen] = useState(false)
-  const [isObsidianOpen, setIsObsidianOpen] = useState(false)
   const [isDesignOpen, setIsDesignOpen] = useState(false)
   // 통계는 대시보드 새로고침과 함께 다시 계산한다
   const [statsKey, setStatsKey] = useState(0)
@@ -113,7 +111,6 @@ export const App: React.FC = () => {
         onLanguageChange={setActiveLanguage}
         onRefresh={() => loadDashboard(false)}
         onOpenMaintenance={() => setIsMaintenanceOpen(true)}
-        onOpenObsidian={() => setIsObsidianOpen(true)}
         onOpenDesign={() => setIsDesignOpen(true)}
       />
 
@@ -171,14 +168,6 @@ export const App: React.FC = () => {
       <MaintenanceModal
         isOpen={isMaintenanceOpen}
         onClose={() => setIsMaintenanceOpen(false)}
-        onStarted={() => {
-          loadDashboard(false)
-        }}
-      />
-
-      <ObsidianModal
-        isOpen={isObsidianOpen}
-        onClose={() => setIsObsidianOpen(false)}
         onStarted={() => {
           loadDashboard(false)
         }}

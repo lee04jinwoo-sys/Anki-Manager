@@ -47,13 +47,6 @@ class MaintenanceOverview(BaseModel):
     total_needs_count: int = 0
 
 
-class ObsidianInboxSummary(BaseModel):
-    vocab_count: int = 0
-    sentence_count: int = 0
-    total_count: int = 0
-    available: bool = False
-
-
 class DashboardResponse(BaseModel):
     connected: bool
     anki_version: Optional[str] = None
@@ -61,5 +54,4 @@ class DashboardResponse(BaseModel):
     maintenance: MaintenanceOverview = Field(default_factory=MaintenanceOverview)
     leeches: List[LeechSummaryItem] = Field(default_factory=list)
     leech_total_count: int = 0
-    obsidian_inbox: ObsidianInboxSummary = Field(default_factory=ObsidianInboxSummary)
     active_job: JobState = Field(default_factory=JobState)

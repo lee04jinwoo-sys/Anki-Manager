@@ -47,13 +47,6 @@ export interface MaintenanceOverview {
   total_needs_count: number
 }
 
-export interface ObsidianInboxSummary {
-  vocab_count: number
-  sentence_count: number
-  total_count: number
-  available: boolean
-}
-
 export interface LogEntry {
   time: string
   message: string
@@ -91,7 +84,6 @@ export interface DashboardResponse {
   maintenance: MaintenanceOverview
   leeches: LeechSummaryItem[]
   leech_total_count: number
-  obsidian_inbox: ObsidianInboxSummary
   active_job: JobState
 }
 

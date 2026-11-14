@@ -113,13 +113,6 @@ def test_dashboard_counts_empty_sound_field(client, monkeypatch):
         return []
 
     monkeypatch.setattr(AnkiConnector, "invoke", staticmethod(invoke))
-    from backend.routers import dashboard
-
-    class NoInbox:
-        def fetch_inbox_content(self):
-            return None
-
-    monkeypatch.setattr(dashboard, "ObsidianManager", NoInbox)
     r = client.get("/api/dashboard")
     assert r.status_code == 200
     assert r.json()["maintenance"]["missing_audio_count"] == 2

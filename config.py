@@ -61,17 +61,8 @@ MODEL_ZH_VOCAB = "Chinese Vocabulary"
 MODEL_ZH_SENTENCE = "Chinese Sentence"
 
 # --- File Paths ---
-CANDIDATES_FILE = 'candidates.json'
-SELECTED_SENTENCES_FILE = 'selected_sentences.json'
-SELECTED_VOCAB_FILE = 'selected_vocab.json'
 USER_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "data", "user_config.json")
 TEMP_DIR = '/tmp'
-
-# --- Obsidian Configuration ---
-# Default dynamic path that works on most Macs if using iCloud
-DEFAULT_OBSIDIAN_PATH = os.path.join(HOME, "Library/Mobile Documents/iCloud~md~obsidian/Documents/Main Archive")
-OBSIDIAN_VAULT_PATH = get_setting("OBSIDIAN_VAULT_PATH", DEFAULT_OBSIDIAN_PATH)
-OBSIDIAN_INBOX_FILE = get_setting("OBSIDIAN_INBOX_FILE", "Anki_Inbox.md")
 
 # --- Audio (TTS) Configuration ---
 TTS_SENTENCE_LANGUAGE_CODE = "en-US"

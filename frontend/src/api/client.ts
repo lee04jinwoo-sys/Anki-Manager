@@ -1,6 +1,5 @@
 import type {
   ActionResult,
-  CandidateVocab,
   DashboardResponse,
   JobState,
   StepId,
@@ -52,25 +51,6 @@ export const api = {
   getJobState: (): Promise<JobState> => request<JobState>('/workflow/state'),
   cancelJob: (): Promise<ActionResult> =>
     request<ActionResult>('/workflow/cancel', { method: 'POST' }),
-
-  // Obsidian Import
-  extractObsidian: (): Promise<ActionResult> =>
-    request<ActionResult>('/workflow/extract', {
-      method: 'POST',
-      body: JSON.stringify({ source: 'obsidian' }),
-    }),
-  commitObsidian: (
-    selectedSentences: string[],
-    selectedVocab: CandidateVocab[],
-  ): Promise<ActionResult> =>
-    request<ActionResult>('/workflow/commit', {
-      method: 'POST',
-      body: JSON.stringify({
-        source: 'obsidian',
-        selected_sentences: selectedSentences,
-        selected_vocab: selectedVocab,
-      }),
-    }),
 
   // Design
   exportDesign: (): Promise<ActionResult> =>

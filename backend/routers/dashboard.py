@@ -1,23 +1,20 @@
 """Dashboard Router.
 
-Connection state, maintenance backlog, Obsidian inbox and the active job.
+Connection state, maintenance backlog and the active job.
 Learning statistics live in /api/stats/overview.
 """
 from __future__ import annotations
 
 import logging
-import os
 
 from fastapi import APIRouter
 
 from backend.schemas.dashboard import (
     DashboardResponse,
     MaintenanceOverview,
-    ObsidianInboxSummary,
 )
 from backend.services.jobs import jobs
-from collectors.obsidian import ObsidianManager
-from config import MODEL_VOCAB, OBSIDIAN_VAULT_PATH
+from config import MODEL_VOCAB
 from integrations.anki_connect import AnkiConnector
 
 logger = logging.getLogger("AnkiManagerDashboard")
@@ -57,38 +54,9 @@ def get_dashboard_summary() -> DashboardResponse:
         total_needs_count=missing_audio + missing_fields,
     )
 
-    # 3. Obsidian Inbox 대기열 요약 (단어 및 문장 전수 집계)
-    inbox_summary = ObsidianInboxSummary(available=False)
-    # 볼트가 없는 곳(서버)에서는 조회하지 않는다. ObsidianManager는 Inbox 파일이 없으면 만들려고 한다.
-    if not os.path.isdir(OBSIDIAN_VAULT_PATH):
-        return DashboardResponse(
-            connected=True,
-            anki_version=anki_version,
-            maintenance=maintenance,
-            obsidian_inbox=inbox_summary,
-            active_job=jobs.snapshot(),
-        )
-    try:
-        mgr = ObsidianManager()
-        data = mgr.fetch_inbox_content()
-        if data:
-            vocab_list = data.get("vocab", [])
-            sentences_list = data.get("sentences", [])
-            v_cnt = len(vocab_list)
-            s_cnt = len(sentences_list)
-            inbox_summary = ObsidianInboxSummary(
-                vocab_count=v_cnt,
-                sentence_count=s_cnt,
-                total_count=v_cnt + s_cnt,
-                available=True,
-            )
-    except Exception as e:
-        logger.debug("Obsidian inbox 조회 건너뜀: %s", e)
-
     return DashboardResponse(
         connected=True,
         anki_version=anki_version,
         maintenance=maintenance,
-        obsidian_inbox=inbox_summary,
         active_job=jobs.snapshot(),
     )
