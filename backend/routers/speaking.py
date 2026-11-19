@@ -114,6 +114,10 @@ def reset_speaking_tracker() -> Dict[str, Any]:
     svc = get_speaking_service()
     try:
         res = svc.tracker.reset_daily()
+        try:
+            svc.sync_tracker_log()
+        except Exception as log_err:
+            logger.warning("Speaking tracker log sync skipped during reset: %s", log_err)
         return {"success": True, **res}
     except Exception as e:
         logger.exception("Speaking tracker reset failed")

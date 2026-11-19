@@ -343,6 +343,16 @@ class SpeakingService:
         self._persist_candidates(session.id, fb.card_candidates)
         self.store.complete_session(session.id)
 
+        today = self.today_fn()
+        streaks = self.store.compute_streaks(today=today)
+        recent_14d = self.store.recent_metrics_summary(days=14, today=today)
+        recent_sessions = self.store.list_recent_sessions(limit=14)
+
+        try:
+            self.tracker.update_log(streaks, recent_14d, recent_sessions)
+        except Exception as e:
+            logger.warning("Failed to update Anki speaking tracker log: %s", e)
+
         tracker_status = "Anki Speaking 1 -> 0 반영 완료"
         try:
             self.tracker.mark_done()
@@ -351,7 +361,6 @@ class SpeakingService:
             logger.warning("Failed to mark Anki speaking tracker done: %s", e)
             tracker_status = f"Anki 트래커 갱신 실패 ({type(e).__name__})"
 
-        streaks = self.store.compute_streaks(today=self.today_fn())
         all_candidates = self.store.list_session_candidates(session.id)
         audio = self.tts_fn(fb.native_model) if fb.native_model else None
 
@@ -472,6 +481,13 @@ class SpeakingService:
             "note_id": note_id,
             "message": f"{label} 카드 등록 완료 ({SPEAKING_CARD_TAG}): {text}",
         }
+
+    def sync_tracker_log(self) -> Dict[str, Any]:
+        today = self.today_fn()
+        streaks = self.store.compute_streaks(today=today)
+        recent_14d = self.store.recent_metrics_summary(days=14, today=today)
+        recent_sessions = self.store.list_recent_sessions(limit=14)
+        return self.tracker.update_log(streaks, recent_14d, recent_sessions)
 
     def get_stats(self) -> Dict[str, Any]:
         today = self.today_fn()

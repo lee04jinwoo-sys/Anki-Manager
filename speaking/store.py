@@ -361,3 +361,56 @@ class SpeakingStore:
             "avg_fillers": round(sum(m.get("filler_count", 0) for m in metrics) / n, 1),
             "avg_long_pauses": round(sum(m.get("long_pause_count", 0) for m in metrics) / n, 1),
         }
+
+    def list_recent_sessions(self, limit: int = 14) -> List[Dict[str, Any]]:
+        """최근 완료된 세션의 1차/2차 지표와 대표 원어민 문장을 최신순으로 돌려준다."""
+        with self._connect() as conn:
+            sessions = conn.execute(
+                """
+                SELECT id, session_date, track, topic_prompt
+                FROM sessions
+                WHERE status='completed'
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+            out: List[Dict[str, Any]] = []
+            for s in sessions:
+                attempts = conn.execute(
+                    "SELECT step, metrics_json, feedback_json FROM attempts WHERE session_id=?",
+                    (s["id"],),
+                ).fetchall()
+                by_step = {
+                    a["step"]: (json.loads(a["metrics_json"]), json.loads(a["feedback_json"]))
+                    for a in attempts
+                }
+                p1_m, p1_f = by_step.get("main_pass1", ({}, {}))
+                p2_m, p2_f = by_step.get("main_pass2", ({}, {}))
+                fu_m, fu_f = by_step.get("followup", ({}, {}))
+                score = p2_f.get("score")
+                if score is None:
+                    score = p1_f.get("score")
+                if score is None:
+                    score = fu_f.get("score")
+                native_model = (
+                    p1_f.get("native_model")
+                    or p2_f.get("native_model")
+                    or fu_f.get("native_model")
+                    or ""
+                )
+                out.append(
+                    {
+                        "id": s["id"],
+                        "session_date": s["session_date"],
+                        "track": s["track"],
+                        "topic_prompt": s["topic_prompt"],
+                        "pass1_wpm": p1_m.get("wpm"),
+                        "pass2_wpm": p2_m.get("wpm"),
+                        "pass1_fillers": p1_m.get("filler_count"),
+                        "pass2_fillers": p2_m.get("filler_count"),
+                        "score": score,
+                        "native_model": native_model,
+                    }
+                )
+            return out

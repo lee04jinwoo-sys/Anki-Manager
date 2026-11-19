@@ -103,9 +103,11 @@ class FakeCoach:
 
 
 class FakeTracker:
-    def __init__(self):
+    def __init__(self, fail_update_log=False):
         self.done_calls = 0
         self.reset_calls = 0
+        self.log_updates = []
+        self.fail_update_log = fail_update_log
 
     def reset_daily(self):
         self.reset_calls += 1
@@ -114,6 +116,11 @@ class FakeTracker:
     def mark_done(self):
         self.done_calls += 1
         return {"card_id": 6001, "due_days": "1"}
+
+    def update_log(self, streaks, recent_14d, recent_sessions):
+        if self.fail_update_log:
+            raise RuntimeError("updateNoteFields failed")
+        self.log_updates.append((streaks, recent_14d, recent_sessions))
 
 
 def test_full_three_step_session_marks_single_anki_tracker_done(tmp_path):
@@ -168,10 +175,13 @@ def test_full_three_step_session_marks_single_anki_tracker_done(tmp_path):
     assert "What trade-off did you accept" in r4["message"]
     assert tracker.done_calls == 0
 
-    # 5) 꼬리질문 완료 -> 세션 완료 + Anki 트래커 1 -> 0 + 후보 버튼 반환
+    # 5) 꼬리질문 완료 -> 세션 완료 + Anki 트래커 1 -> 0 + 로그 갱신 + 후보 버튼 반환
     r5 = svc.handle_voice(b"a5")
     assert r5["step"] == "completed"
     assert tracker.done_calls == 1
+    assert len(tracker.log_updates) == 1
+    assert tracker.log_updates[0][0]["current"] == 1
+    assert len(tracker.log_updates[0][2]) == 1
     assert len(synced) == 1
     assert len(r5["candidates"]) == 2
     assert store.compute_streaks(today=dt.date(2026, 11, 18))["current"] == 1
@@ -209,3 +219,25 @@ def test_voice_without_active_session_runs_debrief_mode(tmp_path):
     assert len(res["candidates"]) == 1
     assert res["candidates"][0]["kind"] == "vocab"
     assert tracker.done_calls == 0  # 외부 회수는 일일 스피킹 완료로 치지 않음
+
+
+def test_tracker_log_failure_does_not_block_mark_done(tmp_path):
+    store = SpeakingStore(tmp_path / "speaking.db")
+    tracker = FakeTracker(fail_update_log=True)
+    svc = SpeakingService(
+        store=store,
+        stt=FakeSTT(),
+        coach=FakeCoach(),
+        tracker=tracker,
+        tts_fn=lambda text: None,
+        vocab_fetcher=lambda count: [],
+        card_creator=lambda kind, payload: {"success": True, "note_id": 1},
+        today_fn=lambda: dt.date(2026, 11, 18),
+    )
+    svc.start_session(track="daily")
+    for i in range(5):
+        out = svc.handle_voice(f"audio{i}".encode())
+
+    assert out["step"] == "completed"
+    assert tracker.done_calls == 1
+    assert "1 -> 0" in out["message"]

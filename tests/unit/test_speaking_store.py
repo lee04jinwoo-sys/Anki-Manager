@@ -109,3 +109,31 @@ def test_card_candidate_persistence_and_mark_added(store):
     store.mark_candidate_added(cid, note_id=987654321)
     updated = store.get_candidate(cid)
     assert updated["added_note_id"] == 987654321
+
+
+def test_list_recent_sessions_includes_pass_metrics_and_model(store):
+    s = store.create_session(
+        session_date="2026-11-18",
+        track="interview",
+        topic_id="int_02",
+        topic_prompt="Hardest bug you debugged.",
+        warmup_prompts=["W1", "W2"],
+        mission_vocab=["bottleneck"],
+    )
+    m1 = SpeakingMetrics(duration_sec=88.0, word_count=140, wpm=95.5, filler_count=6, long_pause_count=2, max_pause_sec=2.1)
+    m2 = SpeakingMetrics(duration_sec=59.0, word_count=125, wpm=127.1, filler_count=1, long_pause_count=0, max_pause_sec=0.8)
+    store.save_attempt(s.id, "main_pass1", "p1", m1, {"score": 6.5, "native_model": "We isolated the root cause."})
+    store.save_attempt(s.id, "main_pass2", "p2", m2, {"score": 8.0, "native_model": "We fixed the bottleneck quickly."})
+    store.complete_session(s.id)
+
+    recent = store.list_recent_sessions(limit=14)
+    assert len(recent) == 1
+    row = recent[0]
+    assert row["session_date"] == "2026-11-18"
+    assert row["track"] == "interview"
+    assert row["pass1_wpm"] == pytest.approx(95.5)
+    assert row["pass2_wpm"] == pytest.approx(127.1)
+    assert row["pass1_fillers"] == 6
+    assert row["pass2_fillers"] == 1
+    assert row["score"] == pytest.approx(8.0)
+    assert row["native_model"] == "We isolated the root cause."

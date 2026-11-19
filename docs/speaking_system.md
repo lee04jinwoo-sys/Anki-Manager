@@ -50,10 +50,11 @@ Anki Manager Backend (127.0.0.1:8001)
 
 ---
 
-## 4. Anki 1장 트래커 규칙 (`speaking::tracker`)
+## 4. Anki 1장 트래커 및 실시간 로그 규칙 (`speaking::tracker`)
 
 - 덱: `1. Language::1.1. English::Speaking`, 모델: `Basic`, 태그: `speaking::tracker`.
 - 매일 04:05(`America/Toronto`, `deploy/anki-speaking-reset.timer`) 서버가 `unsuspend` + `setDueDate("0")` + 동기화를 실행하여 Anki 화면에 `1`을 띄운다.
+- 세션 완료 시 `updateNoteFields`로 고정 트래커 카드 1장의 **앞면**(연속 스트릭, 최근 14일 평균 WPM·필러·긴 침묵, 직전 세션 요약 및 핵심 원어민 문장)과 **뒷면**(최근 14회 세션 로그 Markdown 표)을 자동 갱신한 뒤 `setDueDate("1")`로 `1 → 0` 차감한다 (`updateNoteFields` 실패 시에도 차감은 예외 격리되어 정상 수행).
 - `answerCards` 대신 `setDueDate("1")`를 쓰므로 기존 FSRS 스케줄·정답률·리뷰 시간 통계를 오염시키지 않는다 (`utils/stats.py` 및 `backend/services/stats_service.py`는 `ease == 0` 수동 변경을 제외하고 `Vocabulary/Sentence/Grammar`만 집계).
 - `integrations/nightly_maintenance.py`는 `Basic` 노트를 대상으로 하지 않으므로 트래커 카드를 건드리지 않는다.
 

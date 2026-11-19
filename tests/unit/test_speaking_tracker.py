@@ -88,3 +88,38 @@ def test_fetch_mission_vocab_returns_clean_expressions_without_html():
     assert len(items) == 2
     assert all("<b>" not in item["word"] for item in items)
     assert all(item["meaning"] for item in items)
+
+
+def test_update_log_writes_markdown_stats_and_recent_table_to_tracker_note():
+    anki = FakeAnkiInvoke(existing_notes=[5001], existing_cards=[6001])
+    tracker = AnkiSpeakingTracker(invoke=anki)
+
+    tracker.update_log(
+        streaks={"current": 4, "longest": 7, "total_completed": 12},
+        recent_14d={"attempts_count": 18, "avg_wpm": 118.4, "avg_fillers": 2.3, "avg_long_pauses": 0.6},
+        recent_sessions=[
+            {
+                "session_date": "2026-11-18",
+                "track": "interview",
+                "topic_prompt": "Tell me about a tough bug you fixed.",
+                "pass1_wpm": 96.0,
+                "pass2_wpm": 124.0,
+                "pass1_fillers": 5,
+                "pass2_fillers": 1,
+                "score": 7.8,
+                "native_model": "We isolated the root cause within an hour.",
+            }
+        ],
+    )
+
+    update_calls = [p for a, p in anki.calls if a == "updateNoteFields"]
+    assert len(update_calls) == 1
+    note_payload = update_calls[0]["note"]
+    assert note_payload["id"] == 5001
+    front = note_payload["fields"]["앞면"]
+    back = note_payload["fields"]["뒷면"]
+    assert "연속 4일" in front
+    assert "118.4" in front
+    assert "We isolated the root cause within an hour." in front
+    assert "2026-11-18" in back
+    assert "96->124" in back or "96 -> 124" in back
