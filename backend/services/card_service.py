@@ -164,12 +164,15 @@ def create_sentence_card(req: SentenceCreateRequest) -> CardResponse:
     }
 
     try:
-        note_id = AnkiConnector.add_note(
-            deck_name=DECK_SENTENCE,
-            model_name=MODEL_SENTENCE,
-            fields=fields,
-            options={"allowDuplicate": False}
-        )
+        add_kwargs: Dict[str, Any] = {
+            "deck_name": DECK_SENTENCE,
+            "model_name": MODEL_SENTENCE,
+            "fields": fields,
+            "options": {"allowDuplicate": False},
+        }
+        if req.tags:
+            add_kwargs["tags"] = list(dict.fromkeys(t.strip() for t in req.tags if t.strip()))
+        note_id = AnkiConnector.add_note(**add_kwargs)
 
         # 백그라운드 비동기 오디오 큐 등록 (사용자 대기 시간 0초)
         if req.generate_audio and note_id:
@@ -313,11 +316,12 @@ def create_vocab_card(req: VocabCreateRequest) -> CardResponse:
     _, freq_tier = evaluate_expression_rank_and_tier(norm_word)
 
     try:
+        vocab_tags = list(dict.fromkeys([freq_tier, *(t.strip() for t in req.tags if t.strip())]))
         note_id = AnkiConnector.add_note(
             deck_name=DECK_VOCAB,
             model_name=MODEL_VOCAB,
             fields=fields,
-            tags=[freq_tier],
+            tags=vocab_tags,
             options={"allowDuplicate": False}
         )
 
@@ -472,12 +476,15 @@ def create_grammar_card(req: GrammarCreateRequest) -> CardResponse:
 
     data = {k: v for k, v in fields.items() if k != "소리"}
     try:
-        note_id = AnkiConnector.add_note(
-            deck_name=DECK_GRAMMAR,
-            model_name=MODEL_GRAMMAR,
-            fields=fields,
-            options={"allowDuplicate": False}
-        )
+        grammar_kwargs: Dict[str, Any] = {
+            "deck_name": DECK_GRAMMAR,
+            "model_name": MODEL_GRAMMAR,
+            "fields": fields,
+            "options": {"allowDuplicate": False},
+        }
+        if req.tags:
+            grammar_kwargs["tags"] = list(dict.fromkeys(t.strip() for t in req.tags if t.strip()))
+        note_id = AnkiConnector.add_note(**grammar_kwargs)
     except Exception as e:
         if "duplicate" in str(e).lower():
             return CardResponse(success=True, duplicate=True, data=data)

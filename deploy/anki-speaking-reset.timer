@@ -1,0 +1,9 @@
+[Unit]
+Description=Daily reset of Anki Speaking tracker card at 04:05 Toronto time
+
+[Timer]
+OnCalendar=*-*-* 04:05:00 America/Toronto
+Persistent=true
+
+[Install]
+WantedBy=timers.target

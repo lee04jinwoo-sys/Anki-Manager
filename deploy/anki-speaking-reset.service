@@ -1,0 +1,14 @@
+[Unit]
+Description=Reset daily Anki Speaking tracker card (Due 0 -> 1) and sync
+Wants=anki-manager.service
+After=anki-manager.service anki-restart.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/anki-manager
+EnvironmentFile=-/home/ubuntu/anki-manager/.env.telegram
+EnvironmentFile=-/home/ubuntu/anki-manager/telegram_chat.env
+ExecStart=/home/ubuntu/anki-manager/.venv/bin/python -m speaking.daily_reset
+TimeoutStartSec=120
+Nice=10

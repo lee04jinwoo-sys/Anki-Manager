@@ -16,6 +16,7 @@ class SentenceCreateRequest(BaseModel):
     auto_enrich: bool = True
     generate_audio: bool = True
     use_free_router: bool = True  # True면 무료 등급 모델부터 시도 (기본 활성화)
+    tags: List[str] = Field(default_factory=list)
 
 class SentenceBulkCreateRequest(BaseModel):
     items: List[SentenceItem]
@@ -40,6 +41,7 @@ class VocabCreateRequest(BaseModel):
     auto_enrich: bool = True
     generate_audio: bool = True
     use_free_router: bool = True  # True면 무료 등급 모델부터 시도 (기본 활성화)
+    tags: List[str] = Field(default_factory=list)
 
 class VocabBulkCreateRequest(BaseModel):
     items: List[VocabItem]
@@ -54,6 +56,7 @@ class GrammarCreateRequest(BaseModel):
     explanation: Optional[str] = ""    # 설명. 비면 생성
     auto_enrich: bool = True
     generate_audio: bool = True
+    tags: List[str] = Field(default_factory=list)
 
 class CardResponse(BaseModel):
     success: bool

@@ -27,3 +27,6 @@ def _isolate_local_dbs(monkeypatch, tmp_path):
 
     from integrations import anki_sync
     monkeypatch.setattr(anki_sync, "STATE_PATH", tmp_path / "sync_state.json")
+
+    from speaking import store as speaking_store
+    monkeypatch.setattr(speaking_store, "DB_PATH", tmp_path / "speaking.db")

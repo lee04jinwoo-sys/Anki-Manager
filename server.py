@@ -46,7 +46,7 @@ async def add_no_cache_header(request, call_next):
     return response
 
 # Import routers
-from backend.routers import stats, organize, workflow, status, design, links, dashboard, cards, corpus, leech
+from backend.routers import stats, organize, workflow, status, design, links, dashboard, cards, corpus, leech, speaking
 
 # Include routers
 app.include_router(dashboard.router)
@@ -59,6 +59,7 @@ app.include_router(links.router)
 app.include_router(cards.router)
 app.include_router(corpus.router)
 app.include_router(leech.router)
+app.include_router(speaking.router)
 
 from pathlib import Path
 
