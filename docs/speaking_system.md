@@ -73,7 +73,7 @@ Anki Manager Backend (127.0.0.1:8001)
 
 ---
 
-## 6. 배포 및 최초 활성화 절차 (`oracle-quant`)
+## 6. 배포 및 최초 활성화 절차 (`oracle-main`)
 
 1. 로컬에서 테스트 통과 및 커밋 확인 후 배포:
    ```bash
@@ -82,7 +82,7 @@ Anki Manager Backend (127.0.0.1:8001)
    ```
 2. 서버에서 일일 리셋 타이머 활성화 및 최초 트래커 카드 1장 생성 확인:
    ```bash
-   ssh oracle-quant "sudo systemctl enable --now anki-speaking-reset.timer"
-   ssh oracle-quant "cd ~/anki-manager && .venv/bin/python -m speaking.daily_reset"
+   ssh oracle-main "sudo systemctl enable --now anki-speaking-reset.timer"
+   ssh oracle-main "cd ~/anki-manager && .venv/bin/python -m speaking.daily_reset"
    ```
 3. 텔레그램 `@ankimanager_bot`에서 `/speak` → 음성 테스트 → 완료 후 Anki Sync로 `Speaking: 1 → 0` 반영 확인.

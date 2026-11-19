@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Anki Manager를 서버(oracle-quant)에 배포한다. Mac의 저장소 루트에서 실행:
+# Anki Manager를 서버(oracle-main)에 배포한다. Mac의 저장소 루트에서 실행:
 #   deploy/deploy.sh            테스트 → 빌드 → 전송 → 재시작 → 상태 확인
 #   deploy/deploy.sh --dry-run  보낼 파일만 보여 주고 아무것도 바꾸지 않음
 #
@@ -9,7 +9,7 @@
 # - requirements.txt, deploy/*.service|*.timer가 바뀌었을 때만 설치한다.
 set -euo pipefail
 
-HOST=oracle-quant
+HOST=oracle-main
 REMOTE=/home/ubuntu/anki-manager
 SERVICES=(anki-manager anki-telegram)
 DRY=0
