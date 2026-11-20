@@ -1,11 +1,11 @@
-"""speaking.service 단위 테스트: 3단계 전체 세션 흐름(1->0 트래커 연동) + 외부 회수 + 버튼 카드 등록."""
+"""speaking.service v2 단위 테스트: Anki 질문 카드 큐, 재녹음, FSRS 즉시 평가, 하루 요약, 녹음 보관."""
 import datetime as dt
-
-import pytest
 
 from speaking.models import (
     CardCandidate,
-    CoachFeedback,
+    CardEvaluation,
+    QueueCounts,
+    SpeakingCard,
     SpeakingMetrics,
     TranscriptionResult,
 )
@@ -15,229 +15,200 @@ from speaking.store import SpeakingStore
 
 class FakeSTT:
     def __init__(self):
-        self.calls = 0
+        self.calls = []
 
-    def transcribe(self, audio_bytes: bytes, filename: str = "voice.ogg") -> TranscriptionResult:
-        self.calls += 1
-        # 2차 압축에서 WPM 상승·필러 감소 시뮬레이션
-        if self.calls == 4:
-            metrics = SpeakingMetrics(duration_sec=56.0, word_count=125, wpm=133.9, filler_count=1, long_pause_count=0, max_pause_sec=0.8)
-            return TranscriptionResult(transcript="Compressed fluent pass 2 answer.", metrics=metrics)
-        metrics = SpeakingMetrics(duration_sec=80.0, word_count=130, wpm=97.5, filler_count=5, long_pause_count=2, max_pause_sec=2.1)
-        return TranscriptionResult(transcript=f"Spoken answer #{self.calls}.", metrics=metrics)
+    def transcribe(self, audio_bytes: bytes, filename: str = "voice.ogg", language="en") -> TranscriptionResult:
+        self.calls.append((audio_bytes, language))
+        idx = len(self.calls)
+        # 2번째 호출(재녹음)에서는 WPM 상승·필러 감소
+        if idx == 2:
+            m = SpeakingMetrics(duration_sec=45.0, word_count=96, wpm=128.0, filler_count=1, long_pause_count=0, max_pause_sec=0.5)
+            return TranscriptionResult(transcript="I study engineering science focusing on ML.", metrics=m)
+        m = SpeakingMetrics(duration_sec=60.0, word_count=95, wpm=95.0, filler_count=5, long_pause_count=2, max_pause_sec=1.9)
+        return TranscriptionResult(transcript=f"Spoken answer #{idx}.", metrics=m)
 
 
 class FakeCoach:
-    def evaluate_warmup(self, prompt, transcript, metrics):
-        return CoachFeedback(
-            summary="워밍업 자연스러움.",
-            score=7.5,
-            corrections=[],
-            native_model="I usually grab coffee before class.",
-            followup_question=None,
-            card_candidates=[],
-        )
-
-    def evaluate_main_pass1(self, prompt, track, mission_vocab, transcript, metrics):
-        return CoachFeedback(
-            summary="논지는 명확하나 초반 멈춤이 2회 있음.",
-            score=6.5,
-            corrections=["make a bottleneck -> create a bottleneck"],
-            native_model="We hit a severe bottleneck, so we redesigned the pipeline.",
-            followup_question=None,
+    def evaluate_card(self, card, transcript, metrics, prior_history=()):
+        return CardEvaluation(
+            score=6.8,
+            recommended_ease=2,
+            summary="전반적 내용 명확하나 초반 필러가 있음.",
+            corrections=["my major is about -> I major in"],
+            native_model="I major in engineering science with a focus on machine learning.",
             card_candidates=[
                 CardCandidate(
                     kind="sentence",
-                    text="We hit a severe bottleneck, so we redesigned the pipeline.",
-                    translation="심각한 병목에 부딪혀서 파이프라인을 재설계했다.",
-                    reason="병목 표현 자연화",
+                    text="I major in engineering science.",
+                    translation="저는 공학과학을 전공합니다.",
+                    reason="자연스러운 전공 소개",
                 ),
             ],
         )
 
-    def evaluate_main_pass2(self, prompt, track, pass1_transcript, pass1_metrics, pass2_transcript, pass2_metrics):
-        return CoachFeedback(
-            summary="2차에서 필러가 5→1로 줄고 말속도가 크게 개선됨.",
-            score=7.8,
+    def evaluate_retry(self, card, first_transcript, first_metrics, retry_transcript, retry_metrics):
+        return CardEvaluation(
+            score=8.2,
+            recommended_ease=3,
+            summary="재녹음에서 필러가 줄고 훨씬 매끄러워짐.",
             corrections=[],
-            native_model="Redesigned the pipeline to eliminate the bottleneck.",
-            followup_question="What trade-off did you accept when redesigning it?",
+            native_model="I study engineering science focusing on ML.",
             card_candidates=[],
         )
 
-    def evaluate_followup(self, followup_question, transcript, metrics):
-        return CoachFeedback(
-            summary="즉흥 대응 안정적.",
-            score=7.2,
-            corrections=["similar with -> similar to"],
-            native_model="The trade-off was similar to what we saw earlier.",
-            followup_question=None,
-            card_candidates=[
-                CardCandidate(
-                    kind="grammar",
-                    text="The trade-off was similar to what we saw earlier.",
-                    translation="그 타협은 앞서 본 것과 유사했다.",
-                    answer="to",
-                    distractors=["with"],
-                    reason="전치사 오류",
-                ),
-            ],
-        )
-
     def analyze_debrief(self, transcript):
-        return CoachFeedback(
-            summary="카페에서 연장 요청할 때 자연스러운 표현 2개 추출.",
-            score=None,
+        return CardEvaluation(
+            score=7.0,
+            recommended_ease=3,
+            summary="외부 대화에서 쓸 만한 정중한 요청 표현.",
             corrections=[],
-            native_model="Could I get an extra day to polish this?",
-            followup_question=None,
+            native_model="Would it be alright if I submitted this tomorrow?",
             card_candidates=[
                 CardCandidate(
                     kind="vocab",
-                    text="polish up",
-                    translation="다듬다, 마무리하다",
+                    text="ask for an extension",
+                    translation="기한 연장을 요청하다",
                     reason="외부 대화 회수",
                 ),
             ],
         )
 
 
-class FakeTracker:
-    def __init__(self, fail_update_log=False):
-        self.done_calls = 0
-        self.reset_calls = 0
-        self.log_updates = []
-        self.fail_update_log = fail_update_log
+class FakeAnkiDeck:
+    def __init__(self, initial_cards):
+        self.cards = list(initial_cards)
+        self.answered = []
+        self.back_updates = []
 
-    def reset_daily(self):
-        self.reset_calls += 1
-        return {"card_id": 6001, "due_days": "0"}
+    def get_deck_counts(self):
+        new_c = sum(1 for c in self.cards if c.is_new)
+        rev_c = sum(1 for c in self.cards if not c.is_new)
+        return QueueCounts(new_count=new_c, learn_count=0, review_count=rev_c, total_in_deck=72)
 
-    def mark_done(self):
-        self.done_calls += 1
-        return {"card_id": 6001, "due_days": "1"}
+    def fetch_today_queue(self):
+        return self.get_deck_counts(), list(self.cards)
 
-    def update_log(self, streaks, recent_14d, recent_sessions):
-        if self.fail_update_log:
-            raise RuntimeError("updateNoteFields failed")
-        self.log_updates.append((streaks, recent_14d, recent_sessions))
+    def answer_speaking_card(self, card_id, ease):
+        self.answered.append((card_id, ease))
+        self.cards = [c for c in self.cards if c.card_id != card_id]
+
+    def update_card_back_log(self, note_id, history):
+        self.back_updates.append((note_id, history))
 
 
-def test_full_three_step_session_marks_single_anki_tracker_done(tmp_path):
+def test_v2_queue_retry_rate_summary_and_audio_archive(tmp_path):
     store = SpeakingStore(tmp_path / "speaking.db")
-    tracker = FakeTracker()
-    added_cards = []
+    audio_dir = tmp_path / "audio_archive"
+    # 101번 카드에 과거 기록 1건 삽입 -> 복습 시 직전 힌트 출력 확인
+    store.save_card_attempt(
+        session_date="2026-11-16",
+        card_id=101,
+        note_id=501,
+        topic_id="daily_001",
+        prompt_text="Explain your major.",
+        attempt_num=1,
+        mode="card",
+        transcript="old",
+        audio_path=None,
+        metrics=SpeakingMetrics(duration_sec=50, word_count=80, wpm=96.0, filler_count=4),
+        feedback={"native_model": "I major in engineering."},
+        score=6.5,
+    )
+    store.mark_attempt_rated(1, ease=2)
+
+    cards = [
+        SpeakingCard(card_id=101, note_id=501, topic_id="daily_001", category="Campus", title="Major", prompt_text="Explain your major.", is_new=False, reps=1),
+        SpeakingCard(card_id=202, note_id=502, topic_id="daily_010", category="Toronto", title="TTC", prompt_text="Describe a TTC commute.", is_new=True, reps=0),
+    ]
+    deck = FakeAnkiDeck(cards)
     synced = []
-
-    def fake_add_card(kind, payload):
-        added_cards.append((kind, payload))
-        return {"success": True, "note_id": 900 + len(added_cards), "duplicate": False}
+    added_cards = []
 
     svc = SpeakingService(
         store=store,
+        anki_deck=deck,
         stt=FakeSTT(),
         coach=FakeCoach(),
-        tracker=tracker,
-        tts_fn=lambda text: b"AUDIO-" + text[:10].encode(),
-        vocab_fetcher=lambda count: [{"word": "bottleneck", "meaning": "병목"}],
-        card_creator=fake_add_card,
+        tts_fn=lambda text: b"TTS-OGG",
+        audio_dir=audio_dir,
+        card_creator=lambda kind, payload: (added_cards.append((kind, payload)) or {"success": True, "note_id": 991, "duplicate": False}),
         on_anki_changed=lambda: synced.append(1),
-        today_fn=lambda: dt.date(2026, 11, 18),
+        today_fn=lambda: dt.date(2026, 11, 19),
     )
 
-    # 0) 세션 시작
-    start = svc.start_session(track="interview")
-    assert start["step"] == "warmup_1"
-    assert "워밍업" in start["message"]
-    assert tracker.done_calls == 0
+    # 1) 아침/수동 큐 시작: 총 2장 (새 1 · 복습 1), 직전 기록 힌트 포함
+    s = svc.start_or_resume_today()
+    assert s["status"] == "question"
+    assert "총 2장" in s["message"]
+    assert "[1/2]" in s["message"]
+    assert "I major in engineering." in s["message"]
 
-    # 1) 워밍업 1 -> 워밍업 2
-    r1 = svc.handle_voice(b"a1")
-    assert r1["step"] == "warmup_2"
-    assert tracker.done_calls == 0
+    # 2) 카드 101 1차 녹음 -> 저장, answerCards는 아직 미호출
+    v1 = svc.submit_voice(b"RAW-1", filename="v1.ogg")
+    assert v1["status"] == "evaluated"
+    assert v1["recommended_ease"] == 2
+    assert v1["audio_bytes"] == b"TTS-OGG"
+    assert deck.answered == []
+    saved_files = list((audio_dir / "2026-11-19").glob("card_101_*.ogg"))
+    assert len(saved_files) == 1
 
-    # 2) 워밍업 2 -> 메인 1차
-    r2 = svc.handle_voice(b"a2")
-    assert r2["step"] == "main_pass1"
-    assert "bottleneck" in r2["message"]
-    assert tracker.done_calls == 0
+    # 3) 재녹음 요청 + 2차 녹음 -> WPM 델타 포함
+    retry_prompt = svc.request_retry()
+    assert "재녹음" in retry_prompt["message"]
+    v2 = svc.submit_voice(b"RAW-2", filename="v2.ogg")
+    assert v2["recommended_ease"] == 3
+    assert "95 -> 128" in v2["message"] or "95→128" in v2["message"]
 
-    # 3) 메인 1차 -> 메인 2차 (압축 재발화) + 원어민 TTS 음성 첨부
-    r3 = svc.handle_voice(b"a3")
-    assert r3["step"] == "main_pass2"
-    assert r3["audio_bytes"] is not None
-    assert "WPM" in r3["message"]
-    assert tracker.done_calls == 0
-
-    # 4) 메인 2차 -> 꼬리질문 (1차 대비 delta 포함)
-    r4 = svc.handle_voice(b"a4")
-    assert r4["step"] == "followup"
-    assert "What trade-off did you accept" in r4["message"]
-    assert tracker.done_calls == 0
-
-    # 5) 꼬리질문 완료 -> 세션 완료 + Anki 트래커 1 -> 0 + 로그 갱신 + 후보 버튼 반환
-    r5 = svc.handle_voice(b"a5")
-    assert r5["step"] == "completed"
-    assert tracker.done_calls == 1
-    assert len(tracker.log_updates) == 1
-    assert tracker.log_updates[0][0]["current"] == 1
-    assert len(tracker.log_updates[0][2]) == 1
+    # 4) Good(3) 평가 -> Anki answerCards 호출, 뒷면 로그 갱신, 다음 카드 [2/2] 출제
+    r1 = svc.rate_current_card(101, 3)
+    assert deck.answered == [(101, 3)]
+    assert len(deck.back_updates) == 1
     assert len(synced) == 1
-    assert len(r5["candidates"]) == 2
-    assert store.compute_streaks(today=dt.date(2026, 11, 18))["current"] == 1
+    assert r1["status"] == "next_card"
+    assert "[2/2]" in r1["message"]
+    assert "TTC" in r1["message"]
 
-    # 6) 사용자가 후보 버튼 클릭 -> speaking 태그로 Anki 등록
-    first_cid = r5["candidates"][0]["id"]
-    reg = svc.register_candidate(first_cid)
+    # 5) 카드 202 녹음 후 Easy(4) 평가 -> 0장 남음 -> 하루 요약 + 후보 버튼 반환
+    svc.submit_voice(b"RAW-3", filename="v3.ogg")
+    r2 = svc.rate_current_card(202, 4)
+    assert r2["status"] == "day_completed"
+    assert len(r2["candidates"]) == 1
+    assert "완료" in r2["message"]
+    assert store.compute_streaks(today=dt.date(2026, 11, 19))["current"] == 1
+
+    # 6) 후보 등록 버튼 -> speaking 태그
+    reg = svc.register_candidate(r2["candidates"][0]["id"])
     assert reg["success"] is True
-    assert added_cards[0][0] == "sentence"
-    assert "speaking" in added_cards[0][1]["tags"]
-    assert len(synced) == 2
+    assert added_cards[0][1]["tags"] == ["speaking"]
 
-    # 중복 클릭 시 이미 등록됨 반환
-    dup = svc.register_candidate(first_cid)
-    assert dup["already_added"] is True
-    assert len(added_cards) == 1
+    # 7) 오늘 0장 상태에서 음성 -> 외부 대화 회수 모드 (answerCards 미호출)
+    debrief = svc.submit_voice(b"RAW-DEBRIEF", filename="d.ogg")
+    assert debrief["mode"] == "debrief"
+    assert len(deck.answered) == 2
+    assert len(debrief["candidates"]) == 1
 
 
-def test_voice_without_active_session_runs_debrief_mode(tmp_path):
+def test_back_log_failure_does_not_block_anki_rating(tmp_path):
     store = SpeakingStore(tmp_path / "speaking.db")
-    tracker = FakeTracker()
+    cards = [SpeakingCard(card_id=101, note_id=501, topic_id="daily_001", prompt_text="Q1", is_new=True)]
+    deck = FakeAnkiDeck(cards)
+
+    def broken_back_log(note_id, history):
+        raise RuntimeError("Anki updateNoteFields failed")
+
+    deck.update_card_back_log = broken_back_log
     svc = SpeakingService(
         store=store,
+        anki_deck=deck,
         stt=FakeSTT(),
         coach=FakeCoach(),
-        tracker=tracker,
-        tts_fn=lambda text: b"OGG",
-        vocab_fetcher=lambda count: [],
-        card_creator=lambda kind, payload: {"success": True, "note_id": 777},
-        today_fn=lambda: dt.date(2026, 11, 18),
-    )
-
-    res = svc.handle_voice(b"debrief-audio")
-    assert res["mode"] == "debrief"
-    assert len(res["candidates"]) == 1
-    assert res["candidates"][0]["kind"] == "vocab"
-    assert tracker.done_calls == 0  # 외부 회수는 일일 스피킹 완료로 치지 않음
-
-
-def test_tracker_log_failure_does_not_block_mark_done(tmp_path):
-    store = SpeakingStore(tmp_path / "speaking.db")
-    tracker = FakeTracker(fail_update_log=True)
-    svc = SpeakingService(
-        store=store,
-        stt=FakeSTT(),
-        coach=FakeCoach(),
-        tracker=tracker,
         tts_fn=lambda text: None,
-        vocab_fetcher=lambda count: [],
-        card_creator=lambda kind, payload: {"success": True, "note_id": 1},
-        today_fn=lambda: dt.date(2026, 11, 18),
+        audio_dir=tmp_path / "audio",
+        today_fn=lambda: dt.date(2026, 11, 19),
     )
-    svc.start_session(track="daily")
-    for i in range(5):
-        out = svc.handle_voice(f"audio{i}".encode())
+    svc.start_or_resume_today()
+    svc.submit_voice(b"RAW")
+    out = svc.rate_current_card(101, 3)
 
-    assert out["step"] == "completed"
-    assert tracker.done_calls == 1
-    assert "1 -> 0" in out["message"]
+    assert out["status"] == "day_completed"
+    assert deck.answered == [(101, 3)]

@@ -5,23 +5,39 @@ import logging
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
 from core import llm_router
-from speaking.models import CardCandidate, CoachFeedback, SpeakingMetrics
+from speaking.models import (
+    CardCandidate,
+    CardEvaluation,
+    EaseRating,
+    SpeakingCard,
+    SpeakingMetrics,
+)
 
 logger = logging.getLogger("speaking.coach")
 
 _SYSTEM_PROMPT = (
     "You are a concise, objective English speaking coach for a B2-C1 Korean university student "
-    "in Toronto preparing for campus life, tech internships, and IELTS/TOEFL Speaking. "
+    "in Toronto working on natural everyday fluency, campus communication, and clear spoken expression. "
     "Respond ONLY with valid JSON matching the requested schema. "
     "Write feedback explanations in crisp Korean without flattery or filler praise."
 )
+
+
+def _score_to_ease(score: float) -> EaseRating:
+    if score <= 5.5:
+        return 1
+    if score <= 6.9:
+        return 2
+    if score <= 8.4:
+        return 3
+    return 4
 
 
 def _parse_candidates(raw_items: Any) -> List[CardCandidate]:
     out: List[CardCandidate] = []
     if not isinstance(raw_items, list):
         return out
-    for item in raw_items[:4]:
+    for item in raw_items[:3]:
         if not isinstance(item, dict):
             continue
         kind = str(item.get("kind") or "sentence").strip().lower()
@@ -46,91 +62,72 @@ def _parse_candidates(raw_items: Any) -> List[CardCandidate]:
     return out
 
 
-def _to_feedback(data: Dict[str, Any]) -> CoachFeedback:
+def _to_evaluation(data: Dict[str, Any]) -> CardEvaluation:
     raw_score = data.get("score")
-    score: Optional[float] = None
-    if isinstance(raw_score, (int, float)):
-        score = round(float(raw_score), 1)
+    score = round(float(raw_score), 1) if isinstance(raw_score, (int, float)) else 7.0
+    score = max(1.0, min(10.0, score))
+
+    raw_ease = data.get("recommended_ease")
+    if isinstance(raw_ease, int) and raw_ease in (1, 2, 3, 4):
+        ease: EaseRating = raw_ease  # type: ignore[assignment]
+    else:
+        ease = _score_to_ease(score)
+
     corrections = data.get("corrections")
     if not isinstance(corrections, list):
         corrections = []
-    return CoachFeedback(
-        summary=str(data.get("summary") or "").strip() or "피드백 요약 없음",
+    return CardEvaluation(
         score=score,
-        corrections=[str(c).strip() for c in corrections if str(c).strip()][:5],
+        recommended_ease=ease,
+        summary=str(data.get("summary") or "").strip() or "피드백 요약 없음",
+        corrections=[str(c).strip() for c in corrections if str(c).strip()][:3],
         native_model=str(data.get("native_model") or "").strip(),
-        followup_question=(str(data.get("followup_question")).strip() if data.get("followup_question") else None),
         card_candidates=_parse_candidates(data.get("card_candidates")),
     )
 
 
 class SpeakingCoach:
-    def __init__(
-        self,
-        generate_json_fn: Optional[Callable[..., Any]] = None,
-    ) -> None:
+    def __init__(self, generate_json_fn: Optional[Callable[..., Any]] = None) -> None:
         self._generate_json = generate_json_fn or llm_router.generate_json
 
-    def _ask(self, prompt: str, temperature: float = 0.3) -> CoachFeedback:
+    def _ask(self, prompt: str, temperature: float = 0.3) -> CardEvaluation:
         data, route_name = self._generate_json(_SYSTEM_PROMPT, prompt, temperature)
         logger.info("SpeakingCoach answered via route %s", route_name)
-        return _to_feedback(data if isinstance(data, dict) else {})
+        return _to_evaluation(data if isinstance(data, dict) else {})
 
-    def evaluate_warmup(
+    def evaluate_card(
         self,
-        prompt: str,
+        card: SpeakingCard,
         transcript: str,
         metrics: SpeakingMetrics,
-    ) -> CoachFeedback:
+        prior_history: Sequence[Dict[str, Any]] = (),
+    ) -> CardEvaluation:
+        prior_note = ""
+        if prior_history:
+            last = prior_history[0]
+            prior_note = (
+                f"\nPrevious review on this card ({last.get('session_date')}): "
+                f"score={last.get('score')}, wpm={last.get('wpm')}, model={last.get('native_model')}"
+            )
         user_prompt = f"""
-Evaluate this 30-45s English warmup response. Keep it ultra-brief so the user stays in momentum.
-Prompt: {prompt}
-Transcript: {transcript}
-Metrics: duration={metrics.duration_sec}s, wpm={metrics.wpm}, fillers={metrics.filler_count}, long_pauses={metrics.long_pause_count}
+Evaluate this spoken English answer to an Anki Speaking card.
+Category: {card.category} | Card type: {"New" if card.is_new else f"Review (reps={card.reps})"}
+Question:
+{card.prompt_text}{prior_note}
 
-Return JSON:
-{{
-  "summary": "1-2 sentences in Korean on flow and one quick tip",
-  "score": 1.0-10.0,
-  "corrections": ["up to 2 brief 'before -> natural fix' items"],
-  "native_model": "1 crisp natural sentence upgrading the user's core point",
-  "followup_question": null,
-  "card_candidates": []
-}}
-"""
-        return self._ask(user_prompt, temperature=0.3)
-
-    def evaluate_main_pass1(
-        self,
-        prompt: str,
-        track: str,
-        mission_vocab: Sequence[str],
-        transcript: str,
-        metrics: SpeakingMetrics,
-    ) -> CoachFeedback:
-        vocab_str = ", ".join(mission_vocab) if mission_vocab else "(none)"
-        rubric = {
-            "interview": "STAR clarity, technical specificity, concise impact",
-            "ielts": "clear stance, logical development, natural discourse markers, lexical range",
-            "daily": "natural conversational tone, directness, idiomatic phrasing",
-        }.get(track, "fluency, clarity, natural phrasing")
-
-        user_prompt = f"""
-Evaluate Pass 1 (90s) of a 4/3/2 speaking drill.
-Track: {track} (focus: {rubric})
-Prompt: {prompt}
-Optional mission vocab from user's Anki: {vocab_str}
-Transcript: {transcript}
-Metrics: duration={metrics.duration_sec}s, wpm={metrics.wpm}, fillers={metrics.filler_count}, long_pauses={metrics.long_pause_count}, max_pause={metrics.max_pause_sec}s
+User Transcript: {transcript}
+Metrics: duration={metrics.duration_sec}s, words={metrics.word_count}, wpm={metrics.wpm}, fillers={metrics.filler_count}, long_pauses={metrics.long_pause_count}, max_pause={metrics.max_pause_sec}s
 
 Identify ONLY high-value fixes (Korean-English literal translations, awkward verbs/prepositions, vague phrasing).
+Suggest recommended_ease for Anki FSRS: 1=Again (struggled/off-topic/severe pauses), 2=Hard (understood but choppy/many literal errors), 3=Good (clear & natural enough), 4=Easy (fluent, idiomatic, crisp).
+
 Return JSON:
 {{
-  "summary": "2-3 crisp Korean sentences: structure/delivery diagnosis + mission vocab check + 1 focus for the 60s Pass 2 retry",
   "score": 1.0-10.0,
-  "corrections": ["up to 4 items: 'what user said -> natural English (Korean reason)'"],
-  "native_model": "2-3 natural C1 spoken sentences expressing the user's best point cleanly (for TTS playback)",
-  "followup_question": null,
+  "recommended_ease": 1 | 2 | 3 | 4,
+  "summary": "2 crisp Korean sentences: fluency/delivery note + one concrete upgrade point",
+  "corrections": ["up to 3 items: 'what user said -> natural English (Korean reason)'"],
+  "native_model": "1-2 crisp natural native sentences expressing the user's core point cleanly (for TTS playback)",
   "card_candidates": [
     {{
       "kind": "sentence" | "vocab" | "grammar",
@@ -142,80 +139,46 @@ Return JSON:
     }}
   ]
 }}
-Limit card_candidates to 1-3 genuinely useful items the user stumbled on.
+Limit card_candidates to 0-2 genuinely useful expressions the user stumbled on.
 """
         return self._ask(user_prompt, temperature=0.3)
 
-    def evaluate_main_pass2(
+    def evaluate_retry(
         self,
-        prompt: str,
-        track: str,
-        pass1_transcript: str,
-        pass1_metrics: SpeakingMetrics,
-        pass2_transcript: str,
-        pass2_metrics: SpeakingMetrics,
-    ) -> CoachFeedback:
+        card: SpeakingCard,
+        first_transcript: str,
+        first_metrics: SpeakingMetrics,
+        retry_transcript: str,
+        retry_metrics: SpeakingMetrics,
+    ) -> CardEvaluation:
         user_prompt = f"""
-Compare Pass 1 vs compressed Pass 2 (60s) on the same prompt, then generate 1 unexpected spontaneous follow-up question.
-Track: {track}
-Prompt: {prompt}
-Pass 1 ({pass1_metrics.duration_sec}s, {pass1_metrics.wpm} WPM, {pass1_metrics.filler_count} fillers): {pass1_transcript}
-Pass 2 ({pass2_metrics.duration_sec}s, {pass2_metrics.wpm} WPM, {pass2_metrics.filler_count} fillers): {pass2_transcript}
+Compare Attempt 1 vs Retry Attempt on the same Anki Speaking card.
+Question:
+{card.prompt_text}
+
+Attempt 1 ({first_metrics.duration_sec}s, {first_metrics.wpm} WPM, {first_metrics.filler_count} fillers): {first_transcript}
+Retry ({retry_metrics.duration_sec}s, {retry_metrics.wpm} WPM, {retry_metrics.filler_count} fillers): {retry_transcript}
 
 Return JSON:
 {{
-  "summary": "2-3 crisp Korean sentences comparing Pass 2 vs Pass 1 (did corrections stick, clarity/fluency gain)",
   "score": 1.0-10.0,
-  "corrections": ["up to 2 remaining rough spots in Pass 2"],
+  "recommended_ease": 1 | 2 | 3 | 4,
+  "summary": "2 crisp Korean sentences comparing Retry vs Attempt 1 (clarity, hesitation drop, corrections applied)",
+  "corrections": ["up to 2 remaining rough spots if any"],
   "native_model": "1-2 tight native sentences if helpful, else empty string",
-  "followup_question": "1 sharp, realistic English follow-up question directly challenging or extending what the user just said",
   "card_candidates": [
     {{
       "kind": "sentence" | "vocab",
-      "text": "high-value upgrade if any (0-1 item)",
+      "text": "0-1 high-value upgrade if needed",
       "translation": "Korean translation",
       "reason": "short note"
     }}
   ]
 }}
 """
-        return self._ask(user_prompt, temperature=0.4)
-
-    def evaluate_followup(
-        self,
-        followup_question: str,
-        transcript: str,
-        metrics: SpeakingMetrics,
-    ) -> CoachFeedback:
-        user_prompt = f"""
-Evaluate this spontaneous 30-60s follow-up response.
-Follow-up question: {followup_question}
-Transcript: {transcript}
-Metrics: duration={metrics.duration_sec}s, wpm={metrics.wpm}, fillers={metrics.filler_count}, long_pauses={metrics.long_pause_count}
-
-Return JSON:
-{{
-  "summary": "2 crisp Korean sentences on spontaneous agility and clarity",
-  "score": 1.0-10.0,
-  "corrections": ["up to 3 items: 'before -> natural fix'"],
-  "native_model": "1-2 natural native spoken sentences answering the follow-up cleanly",
-  "followup_question": null,
-  "card_candidates": [
-    {{
-      "kind": "sentence" | "vocab" | "grammar",
-      "text": "natural English sentence or expression",
-      "translation": "Korean translation",
-      "reason": "short Korean note",
-      "answer": "only if kind==grammar",
-      "distractors": []
-    }}
-  ]
-}}
-Limit card_candidates to 0-2 high-value items.
-"""
         return self._ask(user_prompt, temperature=0.3)
 
-    def analyze_debrief(self, transcript: str) -> CoachFeedback:
+    def analyze_debrief(self, transcript: str) -> CardEvaluation:
         user_prompt = f"""
 The user just finished a real-life or external AI English conversation and recorded a quick voice debrief
 (in English, Korean, or mixed) describing what they struggled to say or wanted to express better.
@@ -224,11 +187,11 @@ Debrief transcript: {transcript}
 Extract 2-4 crisp, natural native English expressions/sentences they should save to Anki.
 Return JSON:
 {{
+  "score": 7.0,
+  "recommended_ease": 3,
   "summary": "2 crisp Korean sentences summarizing the target nuance and situational phrasing tip",
-  "score": null,
   "corrections": ["up to 3 situational phrasing notes in Korean"],
   "native_model": "the single best natural English sentence from the set (for TTS playback)",
-  "followup_question": null,
   "card_candidates": [
     {{
       "kind": "sentence" | "vocab",

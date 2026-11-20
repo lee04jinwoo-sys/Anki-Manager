@@ -1,4 +1,4 @@
-"""speaking.store 단위 테스트: 세션·시도·토픽 SRS·카드 후보·스트릭 영속화."""
+"""speaking.store v2 단위 테스트: 일일 큐, 카드별 시도/녹음 경로, 카드 히스토리, 후보, 스트릭."""
 import datetime as dt
 
 import pytest
@@ -12,128 +12,89 @@ def store(tmp_path):
     return SpeakingStore(tmp_path / "speaking.db")
 
 
-def test_session_lifecycle_and_streak(store):
-    day1 = dt.date(2026, 11, 18)
-    day2 = dt.date(2026, 11, 19)
+def test_daily_queue_lifecycle_and_streak(store):
+    d1 = dt.date(2026, 11, 19)
+    d2 = dt.date(2026, 11, 20)
 
-    s1 = store.create_session(
-        session_date=day1.isoformat(),
-        track="interview",
-        topic_id="int_01",
-        topic_prompt="Tell me about a tough bug you solved.",
-        warmup_prompts=["How was your morning?", "What did you eat today?"],
-        mission_vocab=["bottleneck", "trade-off"],
+    q1 = store.upsert_daily_queue(d1.isoformat(), total_assigned=2, active_card_id=101)
+    assert q1["status"] == "active"
+    assert q1["completed_count"] == 0
+    assert store.compute_streaks(today=d1)["current"] == 0
+
+    store.set_queue_state(d1.isoformat(), active_card_id=102, increment_completed=True)
+    store.set_queue_state(d1.isoformat(), active_card_id=None, increment_completed=True, status="completed")
+    assert store.compute_streaks(today=d1) == {"current": 1, "longest": 1, "total_completed": 1}
+
+    store.upsert_daily_queue(d2.isoformat(), total_assigned=1, active_card_id=103)
+    store.set_queue_state(d2.isoformat(), active_card_id=None, increment_completed=True, status="completed")
+    assert store.compute_streaks(today=d2) == {"current": 2, "longest": 2, "total_completed": 2}
+
+
+def test_card_attempts_history_and_today_summary_metrics(store):
+    m1 = SpeakingMetrics(duration_sec=62.0, word_count=110, wpm=106.5, filler_count=4, long_pause_count=2, max_pause_sec=1.9)
+    m2 = SpeakingMetrics(duration_sec=50.0, word_count=108, wpm=129.6, filler_count=1, long_pause_count=0, max_pause_sec=0.7)
+
+    a1 = store.save_card_attempt(
+        session_date="2026-11-19",
+        card_id=101,
+        note_id=501,
+        topic_id="daily_001",
+        prompt_text="Explain your major.",
+        attempt_num=1,
+        mode="card",
+        transcript="First try",
+        audio_path="/tmp/audio/card_101_1.ogg",
+        metrics=m1,
+        feedback={"summary": "1차", "native_model": "I study engineering science."},
+        score=6.5,
     )
-    assert s1.step == "warmup_1"
-    assert s1.status == "active"
-
-    # 아직 완료 전이므로 스트릭 0
-    assert store.compute_streaks(today=day1) == {"current": 0, "longest": 0, "total_completed": 0}
-
-    store.advance_step(s1.id, "followup")
-    store.complete_session(s1.id)
-    assert store.get_active_session() is None
-    assert store.compute_streaks(today=day1) == {"current": 1, "longest": 1, "total_completed": 1}
-
-    # 다음 날 연속 완료
-    s2 = store.create_session(
-        session_date=day2.isoformat(),
-        track="daily",
-        topic_id="day_01",
-        topic_prompt="Describe your favorite spot in Toronto.",
-        warmup_prompts=["Q1", "Q2"],
-        mission_vocab=[],
+    a2 = store.save_card_attempt(
+        session_date="2026-11-19",
+        card_id=101,
+        note_id=501,
+        topic_id="daily_001",
+        prompt_text="Explain your major.",
+        attempt_num=2,
+        mode="card",
+        transcript="Retry try",
+        audio_path="/tmp/audio/card_101_2.ogg",
+        metrics=m2,
+        feedback={"summary": "2차", "native_model": "I major in engineering science with an AI focus."},
+        score=8.0,
     )
-    store.complete_session(s2.id)
-    assert store.compute_streaks(today=day2) == {"current": 2, "longest": 2, "total_completed": 2}
 
+    latest = store.get_latest_attempt_for_card_today("2026-11-19", 101)
+    assert latest["id"] == a2
+    assert latest["audio_path"] == "/tmp/audio/card_101_2.ogg"
 
-def test_topic_srs_reschedules_weak_topic_sooner(store):
-    today = dt.date(2026, 11, 18)
+    store.mark_attempt_rated(a2, ease=3)
+    history = store.list_card_history(card_id=101, limit=5, rated_only=True)
+    assert len(history) == 1
+    assert history[0]["ease"] == 3
+    assert history[0]["wpm"] == pytest.approx(129.6)
+    assert "AI focus" in history[0]["native_model"]
 
-    # 점수 낮음(<= 6) -> 3일 뒤 재출제
-    due_weak = store.record_topic_outcome("int_01", score=5.5, today=today)
-    assert due_weak == (today + dt.timedelta(days=3)).isoformat()
-
-    # 두 번째에 점수 높음(>= 8) -> 14일 이상 뒤로 밀림
-    due_strong = store.record_topic_outcome("int_01", score=8.5, today=today + dt.timedelta(days=3))
-    assert dt.date.fromisoformat(due_strong) >= today + dt.timedelta(days=17)
-
-    # 만기 도래 토픽 조회
-    due_ids = store.get_due_topic_ids(today=today + dt.timedelta(days=3))
-    assert "int_01" not in due_ids
-    due_ids_later = store.get_due_topic_ids(today=today + dt.timedelta(days=30))
-    assert "int_01" in due_ids_later
-
-
-def test_attempts_and_recent_metrics_summary(store):
-    s = store.create_session(
-        session_date="2026-11-18",
-        track="ielts",
-        topic_id="ielts_01",
-        topic_prompt="Describe a book you enjoyed.",
-        warmup_prompts=["W1", "W2"],
-        mission_vocab=["compelling"],
-    )
-    m1 = SpeakingMetrics(duration_sec=85.0, word_count=140, wpm=98.8, filler_count=6, long_pause_count=3, max_pause_sec=2.4)
-    m2 = SpeakingMetrics(duration_sec=58.0, word_count=118, wpm=122.1, filler_count=2, long_pause_count=1, max_pause_sec=1.6)
-
-    store.save_attempt(s.id, "main_pass1", "I uh really liked...", m1, {"score": 6.5})
-    store.save_attempt(s.id, "main_pass2", "I found this book compelling...", m2, {"score": 7.5})
-
-    pass1 = store.get_attempt(s.id, "main_pass1")
-    assert pass1 is not None
-    assert pass1["metrics"]["wpm"] == pytest.approx(98.8)
-
-    summary = store.recent_metrics_summary(days=14, today=dt.date(2026, 11, 18))
+    summary = store.recent_metrics_summary(days=14, today=dt.date(2026, 11, 19))
     assert summary["attempts_count"] == 2
-    assert summary["avg_wpm"] == pytest.approx((98.8 + 122.1) / 2, rel=1e-2)
-    assert summary["avg_fillers"] == pytest.approx(4.0)
+    assert summary["avg_wpm"] == pytest.approx((106.5 + 129.6) / 2, rel=1e-2)
+    assert a1 != a2
 
 
-def test_card_candidate_persistence_and_mark_added(store):
+def test_today_candidates_and_mark_added(store):
     cid = store.save_candidate(
-        session_id=None,
+        session_date="2026-11-19",
+        attempt_id=10,
         candidate=CardCandidate(
             kind="sentence",
-            text="That trade-off paid off in the long run.",
-            translation="그 타협은 장기적으로 효과가 있었다.",
-            reason="막힌 표현 대체",
+            text="I major in engineering science.",
+            translation="저는 공학과학을 전공합니다.",
+            reason="자연스러운 전공 표현",
         ),
     )
+    today_cands = store.list_today_candidates("2026-11-19")
+    assert len(today_cands) == 1
+    assert today_cands[0]["id"] == cid
+
+    store.mark_candidate_added(cid, note_id=8888)
     row = store.get_candidate(cid)
-    assert row is not None
-    assert row["added_note_id"] is None
-    assert row["candidate"]["kind"] == "sentence"
-
-    store.mark_candidate_added(cid, note_id=987654321)
-    updated = store.get_candidate(cid)
-    assert updated["added_note_id"] == 987654321
-
-
-def test_list_recent_sessions_includes_pass_metrics_and_model(store):
-    s = store.create_session(
-        session_date="2026-11-18",
-        track="interview",
-        topic_id="int_02",
-        topic_prompt="Hardest bug you debugged.",
-        warmup_prompts=["W1", "W2"],
-        mission_vocab=["bottleneck"],
-    )
-    m1 = SpeakingMetrics(duration_sec=88.0, word_count=140, wpm=95.5, filler_count=6, long_pause_count=2, max_pause_sec=2.1)
-    m2 = SpeakingMetrics(duration_sec=59.0, word_count=125, wpm=127.1, filler_count=1, long_pause_count=0, max_pause_sec=0.8)
-    store.save_attempt(s.id, "main_pass1", "p1", m1, {"score": 6.5, "native_model": "We isolated the root cause."})
-    store.save_attempt(s.id, "main_pass2", "p2", m2, {"score": 8.0, "native_model": "We fixed the bottleneck quickly."})
-    store.complete_session(s.id)
-
-    recent = store.list_recent_sessions(limit=14)
-    assert len(recent) == 1
-    row = recent[0]
-    assert row["session_date"] == "2026-11-18"
-    assert row["track"] == "interview"
-    assert row["pass1_wpm"] == pytest.approx(95.5)
-    assert row["pass2_wpm"] == pytest.approx(127.1)
-    assert row["pass1_fillers"] == 6
-    assert row["pass2_fillers"] == 1
-    assert row["score"] == pytest.approx(8.0)
-    assert row["native_model"] == "We isolated the root cause."
+    assert row["added_note_id"] == 8888

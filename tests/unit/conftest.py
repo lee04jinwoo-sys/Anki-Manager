@@ -30,3 +30,6 @@ def _isolate_local_dbs(monkeypatch, tmp_path):
 
     from speaking import store as speaking_store
     monkeypatch.setattr(speaking_store, "DB_PATH", tmp_path / "speaking.db")
+
+    from speaking import speech as speaking_speech
+    monkeypatch.setattr(speaking_speech, "DEFAULT_AUDIO_DIR", tmp_path / "speaking_audio", raising=False)

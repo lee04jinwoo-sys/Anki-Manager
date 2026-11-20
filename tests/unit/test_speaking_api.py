@@ -1,109 +1,117 @@
-"""FastAPI /api/speaking/* 엔드포인트 및 card_service tags 전달 단위 테스트."""
+"""FastAPI /api/speaking/* v2 엔드포인트 및 card_service tags 전달 단위 테스트."""
 import base64
 import datetime as dt
 
 from fastapi.testclient import TestClient
 
 from backend.routers import speaking as speaking_router
-from speaking.models import CardCandidate, CoachFeedback, SpeakingMetrics, TranscriptionResult
+from server import app
+from speaking.models import (
+    CardCandidate,
+    CardEvaluation,
+    QueueCounts,
+    SpeakingCard,
+    SpeakingMetrics,
+    TranscriptionResult,
+)
 from speaking.service import SpeakingService
 from speaking.store import SpeakingStore
-from server import app
 
 
 class _FakeSTT:
     def transcribe(self, audio_bytes: bytes, filename: str = "voice.ogg", language="en"):
         return TranscriptionResult(
-            transcript="Hello um testing speaking api.",
-            metrics=SpeakingMetrics(duration_sec=4.0, word_count=5, wpm=75.0, filler_count=1, long_pause_count=0, max_pause_sec=0.4),
+            transcript="Hello testing speaking queue.",
+            metrics=SpeakingMetrics(duration_sec=5.0, word_count=10, wpm=120.0, filler_count=0, long_pause_count=0, max_pause_sec=0.3),
         )
 
 
 class _FakeCoach:
-    def evaluate_warmup(self, prompt, transcript, metrics):
-        return CoachFeedback(summary="짧은 테스트 OK", score=7.5, native_model="Testing the speaking API.")
+    def evaluate_card(self, card, transcript, metrics, prior_history=()):
+        return CardEvaluation(
+            score=8.0,
+            recommended_ease=3,
+            summary="명확함.",
+            native_model="Here is a cleaner phrasing.",
+            card_candidates=[CardCandidate(kind="sentence", text="Here is a cleaner phrasing.", translation="더 깔끔한 표현")],
+        )
 
     def analyze_debrief(self, transcript):
-        return CoachFeedback(
+        return CardEvaluation(
+            score=7.0,
+            recommended_ease=3,
             summary="회수 OK",
             native_model="Let's wrap this up.",
-            card_candidates=[
-                CardCandidate(kind="sentence", text="Let's wrap this up.", translation="이만 마무리합시다."),
-            ],
+            card_candidates=[CardCandidate(kind="sentence", text="Let's wrap this up.", translation="마무리합시다.")],
         )
 
 
-class _FakeTracker:
+class _FakeDeck:
     def __init__(self):
-        self.resets = 0
-        self.dones = 0
+        self.cards = [
+            SpeakingCard(card_id=701, note_id=5701, topic_id="daily_001", category="Campus", title="T", prompt_text="Prompt 1", is_new=True),
+        ]
 
-    def reset_daily(self):
-        self.resets += 1
-        return {"card_id": 7001, "due_days": "0"}
+    def get_deck_counts(self):
+        return QueueCounts(new_count=len(self.cards), learn_count=0, review_count=0, total_in_deck=72)
 
-    def mark_done(self):
-        self.dones += 1
-        return {"card_id": 7001, "due_days": "1"}
+    def fetch_today_queue(self):
+        return self.get_deck_counts(), list(self.cards)
+
+    def answer_speaking_card(self, card_id, ease):
+        self.cards = [c for c in self.cards if c.card_id != card_id]
+
+    def update_card_back_log(self, note_id, history):
+        pass
 
 
-def test_speaking_api_endpoints_end_to_end(monkeypatch, tmp_path):
+def test_v2_speaking_api_endpoints_end_to_end(monkeypatch, tmp_path):
     store = SpeakingStore(tmp_path / "api_speaking.db")
-    tracker = _FakeTracker()
+    deck = _FakeDeck()
     created = []
-
-    def fake_creator(kind, payload):
-        created.append((kind, payload))
-        return {"success": True, "note_id": 555, "duplicate": False}
-
     svc = SpeakingService(
         store=store,
+        anki_deck=deck,
         stt=_FakeSTT(),
         coach=_FakeCoach(),
-        tracker=tracker,
         tts_fn=lambda text: b"OGG-DATA",
-        vocab_fetcher=lambda count: [],
-        card_creator=fake_creator,
-        today_fn=lambda: dt.date(2026, 11, 18),
+        audio_dir=tmp_path / "audio",
+        card_creator=lambda kind, payload: (created.append((kind, payload)) or {"success": True, "note_id": 555, "duplicate": False}),
+        today_fn=lambda: dt.date(2026, 11, 19),
     )
     monkeypatch.setattr(speaking_router, "get_speaking_service", lambda: svc)
 
     client = TestClient(app)
 
-    # 1) 트래커 리셋
-    r_reset = client.post("/api/speaking/tracker/reset")
-    assert r_reset.status_code == 200
-    assert r_reset.json()["due_days"] == "0"
-    assert tracker.resets == 1
+    r_start = client.post("/api/speaking/queue/start")
+    assert r_start.status_code == 200
+    assert r_start.json()["status"] == "question"
+    assert r_start.json()["card_id"] == 701
 
-    # 2) 세션 없이 음성 -> debrief 모드 + 후보 반환
     b64 = base64.b64encode(b"fake-audio").decode("ascii")
-    r_voice = client.post("/api/speaking/voice", json={"audio_b64": b64, "filename": "test.ogg"})
+    r_voice = client.post("/api/speaking/voice", json={"audio_b64": b64, "filename": "t.ogg"})
     assert r_voice.status_code == 200
-    body = r_voice.json()
-    assert body["mode"] == "debrief"
-    assert body["audio_b64"] == base64.b64encode(b"OGG-DATA").decode("ascii")
-    assert len(body["candidates"]) == 1
+    assert r_voice.json()["recommended_ease"] == 3
+    assert r_voice.json()["audio_b64"] == base64.b64encode(b"OGG-DATA").decode("ascii")
 
-    # 3) 후보 카드 추가
-    cid = body["candidates"][0]["id"]
+    r_retry = client.post("/api/speaking/retry")
+    assert r_retry.status_code == 200
+
+    r_rate = client.post("/api/speaking/rate", json={"card_id": 701, "ease": 3})
+    assert r_rate.status_code == 200
+    assert r_rate.json()["status"] == "day_completed"
+    cid = r_rate.json()["candidates"][0]["id"]
+
     r_add = client.post(f"/api/speaking/candidates/{cid}/add")
     assert r_add.status_code == 200
-    assert r_add.json()["success"] is True
     assert created[0][1]["tags"] == ["speaking"]
 
-    # 4) 세션 시작 -> 통계 -> 취소
-    r_start = client.post("/api/speaking/start", json={"track": "daily"})
-    assert r_start.status_code == 200
-    assert r_start.json()["step"] == "warmup_1"
+    r_sum = client.get("/api/speaking/summary")
+    assert r_sum.status_code == 200
 
     r_stats = client.get("/api/speaking/stats")
     assert r_stats.status_code == 200
-    assert r_stats.json()["done_today"] is False
-
-    r_cancel = client.post("/api/speaking/cancel")
-    assert r_cancel.status_code == 200
-    assert r_cancel.json()["cancelled"] is True
+    assert r_stats.json()["streaks"]["current"] == 1
 
 
 def test_card_service_passes_optional_tags(monkeypatch):
@@ -113,12 +121,7 @@ def test_card_service_passes_optional_tags(monkeypatch):
     from integrations.anki_connect import AnkiConnector
 
     captured = {}
-
-    def fake_add_note(**kwargs):
-        captured.update(kwargs)
-        return 12345
-
-    monkeypatch.setattr(AnkiConnector, "add_note", staticmethod(fake_add_note))
+    monkeypatch.setattr(AnkiConnector, "add_note", staticmethod(lambda **kw: (captured.update(kw) or 12345)))
     monkeypatch.setattr(LinkManager, "index_single_sentence", classmethod(lambda cls, nid, text: None))
 
     res = card_service.create_sentence_card(

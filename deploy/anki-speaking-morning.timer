@@ -1,0 +1,9 @@
+[Unit]
+Description=Daily 09:00 America/Toronto Speaking queue push
+
+[Timer]
+OnCalendar=*-*-* 09:00:00 America/Toronto
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,10 +1,12 @@
 """Speech-to-text (Groq Whisper), quantitative fluency metrics, and Chirp 3 HD TTS audio bytes."""
 from __future__ import annotations
 
+import datetime as dt
 import logging
 import os
 import random
 import re
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
 import requests
@@ -20,6 +22,35 @@ LONG_PAUSE_THRESHOLD_SEC = 1.5
 # Groq Whisper word timestamp는 단어 앞 침묵을 다음 단어의 [start, end] 구간에 흡수하는 경향이 있어
 # 단일 단어 발화 상한(0.6초)을 초과한 잔여 구간도 침묵으로 추정한다.
 MAX_NORMAL_WORD_SPAN_SEC = 0.6
+DEFAULT_AUDIO_DIR = Path(os.getenv("SPEAKING_AUDIO_DIR", str(Path.home() / "speaking_audio")))
+
+
+def save_audio_file(
+    audio_bytes: bytes,
+    session_date: str,
+    label: str,
+    filename: str = "voice.ogg",
+    base_dir: Optional[Path] = None,
+    now: Optional[dt.datetime] = None,
+) -> Path:
+    """사용자 녹음 파일을 data/ 백업과 분리된 폴더(YYYY-MM-DD/<label>_<HHMMSS>.ogg)에 영구 보관한다."""
+    root = Path(base_dir) if base_dir is not None else DEFAULT_AUDIO_DIR
+    day_dir = root / session_date
+    day_dir.mkdir(parents=True, exist_ok=True)
+
+    safe_label = re.sub(r"[^A-Za-z0-9_-]", "_", label or "voice")
+    ext = Path(filename or "voice.ogg").suffix.lower() or ".ogg"
+    if not ext.startswith("."):
+        ext = f".{ext}"
+
+    stamp = (now or dt.datetime.now()).strftime("%H%M%S")
+    dest = day_dir / f"{safe_label}_{stamp}{ext}"
+    counter = 1
+    while dest.exists():
+        dest = day_dir / f"{safe_label}_{stamp}_{counter}{ext}"
+        counter += 1
+    dest.write_bytes(audio_bytes)
+    return dest
 
 _SINGLE_FILLER_RE = re.compile(r"\b(?:um|uh|erm|er|ah|hmm|like|basically|actually)\b", re.IGNORECASE)
 _MULTI_FILLER_RE = re.compile(r"\b(?:you know|i mean|kind of|sort of)\b", re.IGNORECASE)

@@ -1,18 +1,17 @@
-"""Pydantic v2 data models for the speaking coach subsystem."""
+"""Pydantic v2 data models for the Anki-native speaking coach subsystem."""
 from __future__ import annotations
 
 from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
-TrackName = Literal["daily", "interview", "ielts"]
-StepName = Literal["warmup_1", "warmup_2", "main_pass1", "main_pass2", "followup", "completed", "cancelled"]
+EaseRating = Literal[1, 2, 3, 4]
 CardKind = Literal["sentence", "vocab", "grammar"]
 
 
-class Topic(BaseModel):
+class DailyQuestion(BaseModel):
     id: str
-    track: TrackName
+    category: str
     title: str
     prompt: str
     bullets: List[str] = Field(default_factory=list)
@@ -42,23 +41,33 @@ class CardCandidate(BaseModel):
     distractors: List[str] = Field(default_factory=list)
 
 
-class CoachFeedback(BaseModel):
+class SpeakingCard(BaseModel):
+    card_id: int
+    note_id: int
+    topic_id: str
+    category: str = "Daily"
+    title: str = ""
+    prompt_text: str
+    is_new: bool = False
+    reps: int = 0
+    interval: int = 0
+
+
+class CardEvaluation(BaseModel):
+    score: float
+    recommended_ease: EaseRating = 3
     summary: str
-    score: Optional[float] = None
     corrections: List[str] = Field(default_factory=list)
     native_model: str = ""
-    followup_question: Optional[str] = None
     card_candidates: List[CardCandidate] = Field(default_factory=list)
 
 
-class SessionState(BaseModel):
-    id: int
-    session_date: str
-    track: str
-    topic_id: str
-    topic_prompt: str
-    warmup_prompts: List[str] = Field(default_factory=list)
-    mission_vocab: List[str] = Field(default_factory=list)
-    step: StepName
-    status: Literal["active", "completed", "cancelled"]
-    followup_question: Optional[str] = None
+class QueueCounts(BaseModel):
+    new_count: int = 0
+    learn_count: int = 0
+    review_count: int = 0
+    total_in_deck: int = 0
+
+    @property
+    def remaining(self) -> int:
+        return self.new_count + self.learn_count + self.review_count

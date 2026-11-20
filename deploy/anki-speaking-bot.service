@@ -1,0 +1,18 @@
+[Unit]
+Description=Dedicated Telegram English speaking bot (Anki FSRS queue + voice coaching)
+Wants=anki-manager.service
+After=anki-manager.service network-online.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/anki-manager
+EnvironmentFile=/home/ubuntu/anki-manager/.env.speaking_bot
+EnvironmentFile=/home/ubuntu/anki-manager/telegram_chat.env
+ExecStart=/home/ubuntu/anki-manager/.venv/bin/python -m integrations.speaking_bot
+Restart=always
+RestartSec=10
+MemoryMax=300M
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

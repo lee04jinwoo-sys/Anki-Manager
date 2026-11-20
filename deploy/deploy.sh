@@ -58,7 +58,7 @@ if [[ "$UNITS_BEFORE" != "$UNITS_AFTER" ]]; then
 fi
 
 echo "== 재시작: ${SERVICES[*]}"
-ssh "$HOST" "sudo systemctl restart ${SERVICES[*]} && echo $COMMIT > $REMOTE/DEPLOYED_COMMIT" </dev/null
+ssh "$HOST" "sudo systemctl restart ${SERVICES[*]} && (systemctl is-enabled --quiet anki-speaking-bot 2>/dev/null && sudo systemctl restart anki-speaking-bot || true) && echo $COMMIT > $REMOTE/DEPLOYED_COMMIT" </dev/null
 
 echo "== 상태 확인"
 ok=0

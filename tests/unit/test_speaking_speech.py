@@ -4,6 +4,7 @@ import pytest
 from speaking.speech import (
     GroqWhisperClient,
     analyze_transcript_metrics,
+    save_audio_file,
     synthesize_coaching_audio,
 )
 
@@ -115,3 +116,18 @@ def test_synthesize_coaching_audio_returns_bytes_from_tts_client():
 
     audio = synthesize_coaching_audio("That trade-off paid off.", tts_client=FakeTTSClient())
     assert audio == b"OGG-AUDIO-BYTES"
+
+
+def test_save_audio_file_writes_under_date_subdir(tmp_path):
+    import datetime as dt
+
+    saved = save_audio_file(
+        b"OGG-RAW-BYTES",
+        session_date="2026-11-19",
+        label="card_101",
+        filename="memo.ogg",
+        base_dir=tmp_path,
+        now=dt.datetime(2026, 11, 19, 9, 15, 30),
+    )
+    assert saved == tmp_path / "2026-11-19" / "card_101_091530.ogg"
+    assert saved.read_bytes() == b"OGG-RAW-BYTES"
