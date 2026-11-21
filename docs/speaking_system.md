@@ -24,7 +24,7 @@ Telegram (스피킹 봇)
   │     └─ GCP Chirp 3 HD 모범 음성 회신 + [재녹음] [다음 질문 ▶]
   ├─ spk_retry                ──▶ POST /api/speaking/retry (1차 vs 재녹음 비교)
   ├─ spk_rate:<id>:3          ──▶ POST /api/speaking/rate (다음 질문으로 넘어감, 중복 탭 무시)
-  └─ /next                    ──▶ POST /api/speaking/next (답했으면 완료 처리, 아니면 건너뛰고 다음 질문)
+  └─ /next                    ──▶ POST /api/speaking/next (30초 이상 답했으면 완료 처리 후 다음 질문, 아니면 안내만)
 ```
 
 ## 3. 명령어
