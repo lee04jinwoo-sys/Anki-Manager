@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
-from speaking.anki_deck import AnkiSpeakingDeck
+from speaking.db_deck import DbQuestionDeck
 from speaking.coach import SpeakingCoach
 from speaking.models import (
     CardCandidate,
@@ -89,7 +89,7 @@ class SpeakingService:
         today_fn: Optional[Callable[[], dt.date]] = None,
     ) -> None:
         self.store = store or SpeakingStore()
-        self.anki_deck = anki_deck or AnkiSpeakingDeck()
+        self.anki_deck = anki_deck or DbQuestionDeck(self.store)
         self.stt = stt or GroqWhisperClient()
         self.coach = coach or SpeakingCoach()
         self.tts_fn = tts_fn or synthesize_coaching_audio
@@ -287,7 +287,7 @@ class SpeakingService:
             lines.append(f"\n교정된 답변:\n{ev.native_model}")
         if auto_line:
             lines.append(f"\n{auto_line}")
-        lines.append("\n문장별 교정은 /last 로 볼 수 있습니다. [재녹음]하거나 Anki 평가(Again/Hard/Good/Easy)를 선택하세요.")
+        lines.append("\n[재녹음]하거나 [다음 질문]으로 넘어가세요. 문장별 교정은 /last 로 볼 수 있습니다.")
 
         return {
             "mode": "card",
@@ -359,7 +359,6 @@ class SpeakingService:
                 except Exception as e:
                     logger.warning("Failed to update card back log (note %s): %s", note_id, e)
 
-        self._notify_anki_changed()
 
         counts, remaining = self.anki_deck.fetch_today_queue()
         q = self.store.get_daily_queue(today_str)
@@ -400,7 +399,7 @@ class SpeakingService:
             index = 1
 
         ease_name = _EASE_NAMES.get(ease, str(ease))
-        header = f"Anki 기록 완료 ({ease_name}) · 남은 카드 {len(remaining)}장"
+        header = None
         return {
             "mode": "queue",
             "status": "next_card",
@@ -413,6 +412,18 @@ class SpeakingService:
             "audio_bytes": None,
             "candidates": [],
         }
+
+    def next_question(self) -> Dict[str, Any]:
+        """/next: 지금 질문에 답했으면 완료 처리하고, 아니면 건너뛰고, 다음 질문을 낸다."""
+        today_str = self.today_fn().isoformat()
+        q = self.store.get_daily_queue(today_str)
+        active = q.get("active_card_id") if q else None
+        if active is None:
+            return self.start_or_resume_today()
+        attempt = self.store.get_latest_attempt_for_card_today(today_str, active)
+        if attempt and attempt.get("ease") is None:
+            return self.rate_current_card(int(active), 3)
+        return self.skip_current_card()
 
     def skip_current_card(self) -> Dict[str, Any]:
         today_str = self.today_fn().isoformat()
@@ -727,7 +738,7 @@ class SpeakingService:
 
         msg = (
             f"스피킹 통계 ({today.isoformat()})\n"
-            f"- 오늘 Anki 남은 카드: {counts.remaining}장 (새 {counts.new_count} · 복습 {counts.review_count + counts.learn_count} / 전체 {counts.total_in_deck}장)\n"
+            f"- 오늘 답한 질문: {self.store.count_rated_today(today.isoformat())}개 (하루 1개가 목표 · 남은 질문 {counts.new_count}/{counts.total_in_deck})\n"
             f"- 연속 스트릭: {streaks['current']}일 (최장 {streaks['longest']}일, 완료일 {streaks['total_completed']}일)\n"
             f"- 최근 14일 ({recent['attempts_count']}회 녹음): "
             f"평균 {recent['avg_wpm']} WPM · 필러 {recent['avg_fillers']}회 · 긴 침묵 {recent['avg_long_pauses']}회"

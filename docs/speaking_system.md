@@ -1,49 +1,52 @@
-# English Speaking Coach v2 (Anki FSRS 질문 카드 + 전용 텔레그램 봇)
+# English Speaking Coach (질문 은행 + 전용 텔레그램 봇)
 
-## 1. v1 -> v2 전환 이유
-- **1카드 = 1질문 Anki 네이티브 스케줄링**: v1의 고정 1장 트래커(`1 -> 0`)와 자체 `topic_srs`를 폐기하고, Anki `1. Language::1.1. English::Speaking` 덱에 **72개 Daily 질문 카드**를 등록해 실제 Anki FSRS 스케줄(`answerCards`)로 복습한다.
-- **전용 텔레그램 봇 분리**: `@ankimanager_bot`(`integrations/telegram_intake.py`)은 기존 단어/문장 카드 입력 전용으로 복원하고, 스피킹 문답은 전용 봇(`integrations/speaking_bot.py`)에서 독립 운영한다.
-- **영구 녹음 보관**: 모든 사용자 음성 녹음(`.ogg`)을 `data/` 백업 대상 바깥(`~/speaking_audio/YYYY-MM-DD/card_<card_id>_<HHMMSS>.ogg`, `SPEAKING_AUDIO_DIR`)에 저장한다.
+하루 1개는 필수, 더 하고 싶으면 계속 이어서 말한다. 질문은 서버 DB에서 순서대로 나오고, 교정된 문장과 표현은 Anki 문장/단어 덱으로 자동 추가된다.
 
----
+## 1. 구조 요약
+- **질문**: `speaking/question_bank.py`의 72개(일상 카테고리 54개 먼저, 기술·발표 18개 뒤). 질문 하나씩만 보여 준다.
+- **진행 상태**: `data/speaking.db`의 `question_progress`(open/done). 한 바퀴를 다 돌면 처음부터 다시 시작한다. 큐 구현은 `speaking/db_deck.py`.
+- **Anki Speaking 덱은 쓰지 않는다.** 예전 FSRS 방식(72장 시딩, Again/Hard/Good/Easy)은 폐기했다. 스피킹에는 간격반복이 맞지 않고, 외울 가치가 있는 것은 질문이 아니라 내가 틀린 문장과 표현이기 때문이다.
+- **하루 완료**: 그날 평가(다음 질문으로 넘어감)된 답변이 1개 이상이면 스트릭에 반영된다.
+- **전용 봇**: `integrations/speaking_bot.py` (`SPEAKING_BOT_TOKEN`). `@ankimanager_bot`(`telegram_intake.py`)은 카드 입력 전용.
 
-## 2. 아키텍처
+## 2. 흐름
 
 ```text
-Telegram (전용 스피킹 봇: integrations/speaking_bot.py)
+Telegram (스피킹 봇)
   ├─ 09:00 푸시 (anki-speaking-morning.timer) ──▶ POST /api/speaking/queue/start
-  ├─ 음성 메시지 (voice/audio)               ──▶ POST /api/speaking/voice
-  │     ├─ ~/speaking_audio/YYYY-MM-DD/...ogg 저장
-  │     ├─ Groq whisper-large-v3-turbo 단어 타임스탬프 + 흡수 침묵(0.6s+) 측정
-  │     ├─ core/llm_router.py 채점 (점수 + 추천 등급 + 교정 + 원어민 대안)
-  │     └─ GCP Chirp 3 HD OGG_OPUS 모범 음성 회신 + [재녹음] / [Again Hard Good Easy]
-  ├─ spk_retry                               ──▶ POST /api/speaking/retry (1차 vs 재녹음 WPM 비교)
-  ├─ spk_rate:<card_id>:<ease>               ──▶ POST /api/speaking/rate
-  │     ├─ AnkiConnect answerCards (실제 FSRS 반영)
-  │     ├─ 해당 카드 뒷면(뒷면 필드) 복습 요약 표 갱신
-  │     ├─ 다음 카드 [k+1/N] 출제 또는 0장 완료 시 하루 요약 + 후보 버튼 전송
-  └─ spk_add:<cand_id>                       ──▶ POST /api/speaking/candidates/{id}/add
-                                                  └─▶ card_service (tags=["speaking"]) + AnkiWeb 동기화
+  ├─ /today /next /skip /last /summary /stats /debrief
+  ├─ 음성 메시지 ──▶ POST /api/speaking/voice
+  │     ├─ ~/speaking_audio/YYYY-MM-DD/card_<id>_<HHMMSS>.oga 저장 (백업 없음, 90일 정리 예정)
+  │     ├─ Groq whisper-large-v3-turbo 전사 (.oga는 .ogg로 바꿔 전송) + WPM·필러·침묵 측정
+  │     ├─ core/llm_router.py 채점: 점수, 요약, 문장별 교정, 교정된 전체 답변, 카드 후보
+  │     ├─ 후보 자동 추가: 문장 ≤5 · 표현 ≤5 (하루 상한 문장 10 · 표현 10), 태그 speaking, speaking::auto
+  │     └─ GCP Chirp 3 HD 모범 음성 회신 + [재녹음] [다음 질문 ▶]
+  ├─ spk_retry                ──▶ POST /api/speaking/retry (1차 vs 재녹음 비교)
+  ├─ spk_rate:<id>:3          ──▶ POST /api/speaking/rate (다음 질문으로 넘어감, 중복 탭 무시)
+  └─ /next                    ──▶ POST /api/speaking/next (답했으면 완료 처리, 아니면 건너뛰고 다음 질문)
 ```
 
----
+## 3. 명령어
+| 명령 | 동작 |
+| --- | --- |
+| `/today` | 오늘 질문 받기·이어하기 |
+| `/next` (`/more`) | 다음 질문. 더 하고 싶을 때 |
+| `/skip` | 이 질문을 건너뛰고 다른 질문 |
+| `/last` | 최근 답변의 문장별 교정 |
+| `/summary` | 오늘 요약, 아직 추가 안 한 후보 |
+| `/stats` | 스트릭, 오늘 답한 질문 수, 최근 14일 WPM·필러·긴 침묵 |
+| `/debrief` | 외부 대화에서 막힌 표현 회수. 질문이 없을 때 음성을 보내도 자동 |
 
-## 3. Anki 덱 · 프리셋 · 질문 은행 규격
+명령어 메뉴는 봇이 시작할 때 `setMyCommands`로 등록한다.
 
-- **덱**: `1. Language::1.1. English::Speaking` (`Basic` 모델, 태그 `speaking::question`, `speaking::daily`, `speaking::id::<id>`)
-- **전용 프리셋 (`English Speaking`)**:
-  - 일일 한도: `new.perDay = 1`, `rev.perDay = 3` (하루 최대 15~20분 상한)
-  - 목표 보존율: `desiredRetention = 0.85`
-  - 당일 재노출 억제: `new.delays = []`, `lapse.delays = []` (Anki가 빈 배열을 거부할 경우 `[1440.0]` 자동 폴백) → `Good` 1회로 즉시 오늘 큐에서 졸업
-- **질문 은행 ([speaking/question_bank.py](file:///Users/leejinwoo/Desktop/Projects/Anki%20Manager/speaking/question_bank.py))**: 8개 Daily 카테고리 × 9문항 = **72장** (`Campus & Classes`, `Toronto Life`, `Small Talk & Updates`, `Opinions & Tech`, `Social & Boundaries`, `Requests & Problem Solving`, `Stories & Reflections`, `Projects & Presentations`).
-- **기존 통계 보호**: [backend/services/stats_service.py](file:///Users/leejinwoo/Desktop/Projects/Anki%20Manager/backend/services/stats_service.py)는 `Vocabulary`/`Sentence`/`Grammar`만 집계하므로 스피킹 덱이 기존 정답률/복습량 통계를 오염시키지 않는다.
+## 4. 운영
+- 서비스: `anki-speaking-bot.service`(상시), `anki-speaking-morning.timer`(09:00 America/Toronto). `.env.speaking_bot`에 `SPEAKING_BOT_TOKEN`.
+- 배포는 `deploy/deploy.sh`. 이미 켜져 있으면 봇을 재시작한다.
+- 자동 추가 카드 정리: Anki에서 `tag:speaking::auto` 검색.
+- 학습 설계 메모: 연습량이 핵심이므로 한 세션에 여러 질문을 이어서 하는 것이 목표(워밍업 효과). 첫 질문과 마지막 질문 지표 비교는 아직 없음.
 
----
-
-## 4. BotFather 토큰 등록 및 활성화 (`oracle-main`)
-
-1. Telegram `@BotFather`에서 `/newbot`으로 스피킹 전용 봇 토큰 발급
-2. 서버에 토큰 저장 및 `anki-speaking-bot.service` + `anki-speaking-morning.timer` 시작:
-   ```bash
-   ssh -t oracle-main 'umask 077; read -rsp "SPEAKING_BOT_TOKEN: " T; echo; printf "SPEAKING_BOT_TOKEN=%s\n" "$T" > ~/anki-manager/.env.speaking_bot; sudo systemctl enable --now anki-speaking-bot anki-speaking-morning.timer; cd ~/anki-manager && set -a && source .env.speaking_bot && source telegram_chat.env && set +a && .venv/bin/python -m speaking.morning_push'
-   ```
+## 5. 알려진 한계
+- 질문이 한 바퀴(72개) 돌면 같은 질문이 반복된다. 신규 질문 생성은 아직 없음.
+- Whisper는 발음 실수를 매끄러운 철자로 받아 적을 수 있어 전사문에 실수가 가려질 수 있다.
+- 오디오 90일 자동 정리, 한 달 뒤 재도전 비교는 미구현.
+- 예전 Anki `Speaking` 덱과 72개 노트는 더 이상 쓰이지 않는다. 삭제는 사용자 확인 후.

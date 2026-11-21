@@ -164,7 +164,7 @@ def test_v2_queue_retry_rate_summary_and_audio_archive(tmp_path):
     r1 = svc.rate_current_card(101, 3)
     assert deck.answered == [(101, 3)]
     assert len(deck.back_updates) == 1
-    assert len(synced) == 2  # 1차 녹음 자동 추가 1회 + 평가 1회 (카드 단위가 아니라 답변 단위)
+    assert len(synced) == 1  # 자동 추가 때만 동기화 (평가는 Anki를 쓰지 않음)
     assert r1["status"] == "next_card"
     assert r1["message"].rstrip().endswith("Describe a TTC commute.")
     assert "TTC" in r1["message"]

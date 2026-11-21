@@ -23,14 +23,25 @@ _POLL_TIMEOUT_SEC = 50
 _BACKEND_TIMEOUT_SEC = 120
 
 USAGE = (
-    "영어 스피킹 전용 봇 (Anki `Speaking` 덱 FSRS 연동)\n"
-    "/today : 오늘의 스피킹 큐 시작/이어하기\n"
-    "/skip : 다음 카드로 순서 넘기기\n"
-    "/summary : 오늘 말한 세트 요약 & 카드 후보 보기\n"
+    "영어 스피킹 봇 (하루 1개는 필수, 더 하고 싶으면 계속)\n"
+    "/today : 오늘 질문 받기 / 이어하기\n"
+    "/next : 다음 질문 (더 하고 싶을 때)\n"
+    "/skip : 이 질문 건너뛰고 다른 질문\n"
     "/last : 최근 답변의 문장별 교정 보기\n"
+    "/summary : 오늘 요약\n"
     "/stats : 스트릭 · 최근 14일 WPM/필러 통계\n"
-    "/debrief : 외부 대화 막힌 표현 회수 (큐 완료 후엔 음성을 바로 보내도 자동 회수)"
+    "/debrief : 외부 대화 막힌 표현 회수 (질문 없이 음성을 바로 보내도 자동 회수)"
 )
+
+_COMMAND_MENU = [
+    ("today", "오늘 질문 받기"),
+    ("next", "다음 질문 (더 하기)"),
+    ("skip", "질문 건너뛰기"),
+    ("last", "최근 답변 문장별 교정"),
+    ("summary", "오늘 요약"),
+    ("stats", "스트릭·통계"),
+    ("debrief", "외부 대화 표현 회수"),
+]
 
 _EASE_BUTTONS = (
     (1, "Again"),
@@ -49,15 +60,13 @@ def _safe_error(e):
     return str(e) if isinstance(e, BackendError) else type(e).__name__
 
 
-def _build_evaluation_markup(card_id, recommended_ease):
-    rate_row = []
-    for ease, label in _EASE_BUTTONS:
-        text = f"★ {label}" if ease == recommended_ease else label
-        rate_row.append({"text": text, "callback_data": f"spk_rate:{card_id}:{ease}"})
+def _build_evaluation_markup(card_id, recommended_ease=None):
     return {
         "inline_keyboard": [
-            [{"text": "🔄 재녹음 (같은 질문)", "callback_data": "spk_retry"}],
-            rate_row,
+            [
+                {"text": "🔄 재녹음", "callback_data": "spk_retry"},
+                {"text": "다음 질문 ▶", "callback_data": f"spk_rate:{card_id}:3"},
+            ]
         ]
     }
 
@@ -143,6 +152,9 @@ def _handle_command(text, chat_id, backend, send):
     cmd = text.strip().split()[0].split("@")[0].lower()
     if cmd in ("/start", "/today"):
         res = backend("POST", "/api/speaking/queue/start", {})
+        _send_action_response(res, chat_id, send)
+    elif cmd in ("/next", "/more"):
+        res = backend("POST", "/api/speaking/next", {})
         _send_action_response(res, chat_id, send)
     elif cmd == "/skip":
         res = backend("POST", "/api/speaking/skip", {})
@@ -321,6 +333,15 @@ def run(token, allowed_chat_id):
         raw = session.get(f"{file_api}/{file_path}", timeout=45)
         raw.raise_for_status()
         return raw.content, Path(file_path).name
+
+    try:
+        session.post(
+            f"{api}/setMyCommands",
+            json={"commands": [{"command": c, "description": d} for c, d in _COMMAND_MENU]},
+            timeout=15,
+        )
+    except Exception as e:
+        logger.warning("명령어 메뉴 등록 실패: %s", type(e).__name__)
 
     offset = None
     logger.info("스피킹 텔레그램 봇 폴링 시작 (허락된 채팅 %s)", allowed_chat_id)

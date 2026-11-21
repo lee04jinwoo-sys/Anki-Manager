@@ -124,6 +124,11 @@ def last_speaking_feedback() -> SpeakingActionResponse:
     return _encode_response(get_speaking_service().get_last_feedback())
 
 
+@router.post("/next", response_model=SpeakingActionResponse)
+def next_speaking_question() -> SpeakingActionResponse:
+    return _encode_response(get_speaking_service().next_question())
+
+
 @router.post("/skip", response_model=SpeakingActionResponse)
 def skip_speaking_card() -> SpeakingActionResponse:
     res = get_speaking_service().skip_current_card()

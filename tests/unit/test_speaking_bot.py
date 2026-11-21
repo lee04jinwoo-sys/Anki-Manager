@@ -41,7 +41,7 @@ def test_today_command_starts_queue():
     assert "오늘 총 2장" in sent[0][1]
 
 
-def test_voice_sends_feedback_tts_and_retry_plus_4_rating_buttons():
+def test_voice_sends_feedback_tts_and_retry_plus_next_button():
     backend = FakeBackend({
         ("POST", "/api/speaking/voice"): {
             "mode": "card",
@@ -67,15 +67,8 @@ def test_voice_sends_feedback_tts_and_retry_plus_4_rating_buttons():
 
     assert offset == 3
     markup = sent_text[0][2]["reply_markup"]["inline_keyboard"]
-    assert markup[0][0]["callback_data"] == "spk_retry"
-    rate_row = markup[1]
-    assert [b["callback_data"] for b in rate_row] == [
-        "spk_rate:701:1",
-        "spk_rate:701:2",
-        "spk_rate:701:3",
-        "spk_rate:701:4",
-    ]
-    assert "★" in rate_row[2]["text"]  # recommended_ease == 3 (Good)
+    assert [b["callback_data"] for b in markup[0]] == ["spk_retry", "spk_rate:701:3"]
+    assert "다음 질문" in markup[0][1]["text"]
     assert sent_voice == [(ALLOWED, b"OGG-BYTES", "원어민 모범 발화 듣기")]
 
 
@@ -193,3 +186,14 @@ def test_evaluated_voice_sends_candidates_with_add_all_button():
         ALLOWED, backend, send, answer_callback=lambda *a, **k: None,
     )
     assert sent[0][0] == "전부 추가: 2장 등록"
+
+
+def test_next_command_calls_next_endpoint():
+    backend = FakeBackend({("POST", "/api/speaking/next"): {"status": "question", "message": "Q2?", "candidates": []}})
+    sent = []
+    sb.process_updates(
+        [{"update_id": 9, "message": {"chat": {"id": ALLOWED}, "text": "/next"}}],
+        ALLOWED, backend, lambda cid, text, **kw: sent.append(text),
+    )
+    assert backend.calls[0][:2] == ("POST", "/api/speaking/next")
+    assert sent == ["Q2?"]

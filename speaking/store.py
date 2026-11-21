@@ -42,6 +42,12 @@ CREATE TABLE IF NOT EXISTS card_attempts (
     rated_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS question_progress (
+    topic_id TEXT PRIMARY KEY,
+    status TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS card_candidates (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id INTEGER,
@@ -239,6 +245,32 @@ class SpeakingStore:
             "created_at": row["created_at"],
         }
 
+    def question_statuses(self) -> Dict[str, str]:
+        with self._connect() as conn:
+            return {r["topic_id"]: r["status"] for r in conn.execute("SELECT topic_id, status FROM question_progress")}
+
+    def set_question_status(self, topic_id: str, status: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO question_progress (topic_id, status, updated_at) VALUES (?, ?, ?)
+                ON CONFLICT(topic_id) DO UPDATE SET status=excluded.status, updated_at=excluded.updated_at
+                """,
+                (topic_id, status, _now_iso()),
+            )
+
+    def reset_question_progress(self) -> None:
+        with self._connect() as conn:
+            conn.execute("DELETE FROM question_progress")
+
+    def count_rated_today(self, session_date: str) -> int:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT COUNT(DISTINCT card_id) AS n FROM card_attempts WHERE session_date=? AND mode='card' AND ease IS NOT NULL",
+                (session_date,),
+            ).fetchone()
+        return int(row["n"])
+
     def get_latest_attempt(self) -> Optional[Dict[str, Any]]:
         with self._connect() as conn:
             row = conn.execute("SELECT * FROM card_attempts WHERE mode='card' ORDER BY id DESC LIMIT 1").fetchone()
@@ -363,11 +395,12 @@ class SpeakingStore:
     def compute_streaks(self, today: dt.date) -> Dict[str, int]:
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT DISTINCT session_date FROM daily_queues WHERE status='completed' ORDER BY session_date ASC"
+                """
+                SELECT session_date FROM daily_queues WHERE status='completed'
+                UNION
+                SELECT session_date FROM card_attempts WHERE mode='card' AND ease IS NOT NULL
+                """
             ).fetchall()
-            total_row = conn.execute(
-                "SELECT COUNT(*) AS cnt FROM daily_queues WHERE status='completed'"
-            ).fetchone()
         days = {r["session_date"] for r in rows}
         current = 0
         cursor = today if today.isoformat() in days else today - dt.timedelta(days=1)
@@ -384,7 +417,7 @@ class SpeakingStore:
         return {
             "current": current,
             "longest": longest,
-            "total_completed": int(total_row["cnt"]),
+            "total_completed": len(days),
         }
 
     def recent_metrics_summary(
