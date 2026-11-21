@@ -79,7 +79,7 @@ class SpeakingService:
     def __init__(
         self,
         store: Optional[SpeakingStore] = None,
-        anki_deck: Optional[Any] = None,
+        queue: Optional[Any] = None,
         stt: Optional[Any] = None,
         coach: Optional[Any] = None,
         tts_fn: Optional[Callable[[str], Optional[bytes]]] = None,
@@ -89,7 +89,7 @@ class SpeakingService:
         today_fn: Optional[Callable[[], dt.date]] = None,
     ) -> None:
         self.store = store or SpeakingStore()
-        self.anki_deck = anki_deck or DbQuestionDeck(self.store)
+        self.queue = queue or DbQuestionDeck(self.store)
         self.stt = stt or GroqWhisperClient()
         self.coach = coach or SpeakingCoach()
         self.tts_fn = tts_fn or synthesize_coaching_audio
@@ -167,7 +167,7 @@ class SpeakingService:
 
     def start_or_resume_today(self) -> Dict[str, Any]:
         today_str = self.today_fn().isoformat()
-        counts, cards = self.anki_deck.fetch_today_queue()
+        counts, cards = self.queue.fetch_today_queue()
         existing = self.store.get_daily_queue(today_str)
 
         if not cards:
@@ -228,7 +228,7 @@ class SpeakingService:
         if not q or q["status"] != "active" or not q.get("active_card_id"):
             return self._handle_debrief(today_str, audio_bytes, filename)
 
-        counts, cards = self.anki_deck.fetch_today_queue()
+        counts, cards = self.queue.fetch_today_queue()
         if not cards:
             return self._handle_debrief(today_str, audio_bytes, filename)
 
@@ -347,20 +347,12 @@ class SpeakingService:
                 "candidates": [],
             }
 
-        self.anki_deck.answer_speaking_card(card_id, ease)
+        self.queue.answer_speaking_card(card_id, ease)
 
         if attempt:
             self.store.mark_attempt_rated(attempt["id"], ease)
-            note_id = attempt.get("note_id")
-            if note_id:
-                try:
-                    history = self.store.list_card_history(card_id, limit=5, rated_only=True)
-                    self.anki_deck.update_card_back_log(int(note_id), history)
-                except Exception as e:
-                    logger.warning("Failed to update card back log (note %s): %s", note_id, e)
 
-
-        counts, remaining = self.anki_deck.fetch_today_queue()
+        counts, remaining = self.queue.fetch_today_queue()
         q = self.store.get_daily_queue(today_str)
         if not remaining or counts.remaining == 0:
             if q:
@@ -427,7 +419,7 @@ class SpeakingService:
 
     def skip_current_card(self) -> Dict[str, Any]:
         today_str = self.today_fn().isoformat()
-        counts, cards = self.anki_deck.fetch_today_queue()
+        counts, cards = self.queue.fetch_today_queue()
         if not cards:
             return {
                 "mode": "queue",
@@ -732,7 +724,7 @@ class SpeakingService:
         streaks = self.store.compute_streaks(today=today)
         recent = self.store.recent_metrics_summary(days=14, today=today)
         try:
-            counts = self.anki_deck.get_deck_counts()
+            counts = self.queue.get_deck_counts()
         except Exception:
             counts = QueueCounts()
 

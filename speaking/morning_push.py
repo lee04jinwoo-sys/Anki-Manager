@@ -63,14 +63,7 @@ def main() -> None:
         logger.warning("SPEAKING_BOT_TOKEN 또는 TELEGRAM_ALLOWED_CHAT_ID가 비어 있어 아침 푸시를 건너뜁니다.")
         return
 
-    from integrations import anki_sync
-
-    notify = anki_sync.telegram_notifier()
-    push_morning_queue(
-        token=token,
-        chat_id=int(chat_raw),
-        sync_fn=lambda: anki_sync.sync_and_report(anki_sync.anki_connect_sync, notify),
-    )
+    push_morning_queue(token=token, chat_id=int(chat_raw))
 
 
 if __name__ == "__main__":

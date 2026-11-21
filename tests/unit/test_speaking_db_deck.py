@@ -36,7 +36,7 @@ def test_unanswered_open_question_stays_first_and_bank_restarts_after_full_round
 
 def test_next_question_marks_answered_done_and_skips_unanswered(tmp_path):
     store = SpeakingStore(tmp_path / "s.db")
-    svc = SpeakingService(store=store, anki_deck=DbQuestionDeck(store, QS), today_fn=lambda: dt.date(2026, 11, 19))
+    svc = SpeakingService(store=store, queue=DbQuestionDeck(store, QS), today_fn=lambda: dt.date(2026, 11, 19))
 
     first = svc.start_or_resume_today()
     assert first["message"] == "Question 1?"

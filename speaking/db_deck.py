@@ -1,4 +1,4 @@
-"""질문 은행(DB)에서 질문을 순서대로 꺼내는 큐. Anki 덱 대신 쓰며 `AnkiSpeakingDeck`와 같은 메서드를 제공한다."""
+"""질문 은행(DB)에서 질문을 순서대로 꺼내는 큐. Anki와 연결하지 않는다."""
 from __future__ import annotations
 
 from typing import List, Optional, Sequence, Tuple
@@ -58,6 +58,3 @@ class DbQuestionDeck:
 
     def answer_speaking_card(self, card_id: int, ease: int) -> None:
         self.store.set_question_status(_topic_id(card_id), "done")
-
-    def update_card_back_log(self, note_id: int, history) -> None:
-        return None

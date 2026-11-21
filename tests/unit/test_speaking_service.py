@@ -78,7 +78,6 @@ class FakeAnkiDeck:
     def __init__(self, initial_cards):
         self.cards = list(initial_cards)
         self.answered = []
-        self.back_updates = []
 
     def get_deck_counts(self):
         new_c = sum(1 for c in self.cards if c.is_new)
@@ -92,8 +91,6 @@ class FakeAnkiDeck:
         self.answered.append((card_id, ease))
         self.cards = [c for c in self.cards if c.card_id != card_id]
 
-    def update_card_back_log(self, note_id, history):
-        self.back_updates.append((note_id, history))
 
 
 def test_v2_queue_retry_rate_summary_and_audio_archive(tmp_path):
@@ -126,7 +123,7 @@ def test_v2_queue_retry_rate_summary_and_audio_archive(tmp_path):
 
     svc = SpeakingService(
         store=store,
-        anki_deck=deck,
+        queue=deck,
         stt=FakeSTT(),
         coach=FakeCoach(),
         tts_fn=lambda text: b"TTS-OGG",
@@ -163,7 +160,6 @@ def test_v2_queue_retry_rate_summary_and_audio_archive(tmp_path):
     # 4) Good(3) 평가 -> Anki answerCards 호출, 뒷면 로그 갱신, 다음 카드 [2/2] 출제
     r1 = svc.rate_current_card(101, 3)
     assert deck.answered == [(101, 3)]
-    assert len(deck.back_updates) == 1
     assert len(synced) == 1  # 자동 추가 때만 동기화 (평가는 Anki를 쓰지 않음)
     assert r1["status"] == "next_card"
     assert r1["message"].rstrip().endswith("Describe a TTC commute.")
@@ -190,39 +186,13 @@ def test_v2_queue_retry_rate_summary_and_audio_archive(tmp_path):
     assert len(debrief["candidates"]) == 1
 
 
-def test_back_log_failure_does_not_block_anki_rating(tmp_path):
-    store = SpeakingStore(tmp_path / "speaking.db")
-    cards = [SpeakingCard(card_id=101, note_id=501, topic_id="daily_001", prompt_text="Q1", is_new=True)]
-    deck = FakeAnkiDeck(cards)
-
-    def broken_back_log(note_id, history):
-        raise RuntimeError("Anki updateNoteFields failed")
-
-    deck.update_card_back_log = broken_back_log
-    svc = SpeakingService(
-        store=store,
-        anki_deck=deck,
-        stt=FakeSTT(),
-        coach=FakeCoach(),
-        tts_fn=lambda text: None,
-        audio_dir=tmp_path / "audio",
-        today_fn=lambda: dt.date(2026, 11, 19),
-    )
-    svc.start_or_resume_today()
-    svc.submit_voice(b"RAW")
-    out = svc.rate_current_card(101, 3)
-
-    assert out["status"] == "day_completed"
-    assert deck.answered == [(101, 3)]
-
-
 def test_duplicate_rating_is_ignored(tmp_path):
     store = SpeakingStore(tmp_path / "speaking.db")
     cards = [SpeakingCard(card_id=101, note_id=501, topic_id="daily_001", prompt_text="Q1", is_new=True)]
     deck = FakeAnkiDeck(cards)
     svc = SpeakingService(
         store=store,
-        anki_deck=deck,
+        queue=deck,
         stt=FakeSTT(),
         coach=FakeCoach(),
         tts_fn=lambda text: None,
@@ -250,7 +220,7 @@ def test_register_attempt_candidates_adds_all_and_skips_already_added(tmp_path):
     created = []
     svc = SpeakingService(
         store=store,
-        anki_deck=FakeAnkiDeck([]),
+        queue=FakeAnkiDeck([]),
         card_creator=lambda kind, payload: (created.append(kind) or {"success": True, "note_id": 991}),
         today_fn=lambda: dt.date(2026, 11, 19),
     )
@@ -269,7 +239,7 @@ def test_auto_add_respects_daily_cap_and_notifies_once(tmp_path):
     created, synced = [], []
     svc = SpeakingService(
         store=store,
-        anki_deck=FakeAnkiDeck([]),
+        queue=FakeAnkiDeck([]),
         card_creator=lambda kind, payload: (created.append(kind) or {"success": True, "note_id": 900 + len(created)}),
         on_anki_changed=lambda: synced.append(1),
         today_fn=lambda: dt.date(2026, 11, 19),

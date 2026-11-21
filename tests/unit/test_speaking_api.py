@@ -61,8 +61,6 @@ class _FakeDeck:
     def answer_speaking_card(self, card_id, ease):
         self.cards = [c for c in self.cards if c.card_id != card_id]
 
-    def update_card_back_log(self, note_id, history):
-        pass
 
 
 def test_v2_speaking_api_endpoints_end_to_end(monkeypatch, tmp_path):
@@ -71,7 +69,7 @@ def test_v2_speaking_api_endpoints_end_to_end(monkeypatch, tmp_path):
     created = []
     svc = SpeakingService(
         store=store,
-        anki_deck=deck,
+        queue=deck,
         stt=_FakeSTT(),
         coach=_FakeCoach(),
         tts_fn=lambda text: b"OGG-DATA",
