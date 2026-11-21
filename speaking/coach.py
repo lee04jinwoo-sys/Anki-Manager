@@ -146,8 +146,8 @@ Return JSON:
   "card_candidates": [
     {{
       "kind": "sentence" | "vocab",
-      "text": "for sentence: the user's own sentence corrected into natural English; for vocab: a genuinely useful word or expression from the corrected answer",
-      "translation": "natural Korean translation (for vocab: the Korean meaning)",
+      "text": "for sentence: the user's own sentence corrected into natural English; for vocab: a genuinely useful word or expression from the corrected answer, written in base form with A/B for object slots (e.g. 'write the script based on A', never 'based on it' or 'based on something')",
+      "translation": "natural Korean translation (for vocab: the Korean meaning, separate senses with a comma, never a slash)",
       "reason": "short Korean note why this helps"
     }}
   ]

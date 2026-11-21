@@ -279,3 +279,14 @@ def test_short_recording_is_rejected_without_grading_or_saving(tmp_path):
     assert store.get_latest_attempt_for_card_today("2026-11-19", 101) is None
     assert not list(audio_dir.rglob("*.ogg"))
     assert svc.start_or_resume_today()["card_id"] == 101  # 같은 질문 유지
+
+
+def test_vocab_candidate_is_normalized_for_card_rules():
+    from speaking.service import normalize_vocab_candidate
+
+    assert normalize_vocab_candidate("write the script based on it", "그것을 바탕으로 작성하다") == (
+        "write the script based on A", "그것을 바탕으로 작성하다")
+    assert normalize_vocab_candidate("articulate clearly", "명확하게 말하다/표현하다") == (
+        "articulate clearly", "명확하게 말하다, 표현하다")
+    assert normalize_vocab_candidate("get it done", "끝내다")[0] == "get it done"  # 끝이 대명사가 아니면 그대로
+    assert normalize_vocab_candidate("make it", "해내다")[0] == "make it"  # 두 단어 이하는 그대로

@@ -59,6 +59,17 @@ def _format_delta(p1: SpeakingMetrics, p2: SpeakingMetrics) -> str:
     )
 
 
+_OBJECT_PRONOUNS = {"it", "them", "him", "her", "something", "someone", "somebody"}
+
+
+def normalize_vocab_candidate(text: str, meaning: str) -> tuple[str, str]:
+    """단어 카드 규칙에 맞춘다: 숙어 끝 대명사는 `A`로(예문 연결이 되도록), 뜻의 슬래시는 쉼표로."""
+    words = (text or "").split()
+    if len(words) >= 3 and words[-1].lower().strip(".,") in _OBJECT_PRONOUNS:
+        words[-1] = "A"
+    return " ".join(words), (meaning or "").replace("/", ", ").replace(",,", ",")
+
+
 def _default_card_creator(kind: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     from backend.schemas.cards import (
         GrammarCreateRequest,
@@ -623,9 +634,10 @@ class SpeakingService:
         cand = CardCandidate(**row["candidate"])
         card_tags = [SPEAKING_CARD_TAG, AUTO_CARD_TAG] if auto else [SPEAKING_CARD_TAG]
         if cand.kind == "vocab":
+            word, meaning = normalize_vocab_candidate(cand.text, cand.translation)
             payload: Dict[str, Any] = {
-                "word": cand.text,
-                "meaning": cand.translation,
+                "word": word,
+                "meaning": meaning,
                 "use_free_router": True,
                 "tags": list(card_tags),
             }
