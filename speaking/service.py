@@ -133,19 +133,12 @@ class SpeakingService:
         card: SpeakingCard,
         index: int,
         total: int,
-        counts: Optional[QueueCounts] = None,
         header: Optional[str] = None,
     ) -> str:
-        kind_tag = "새 카드" if card.is_new else f"복습 {card.reps}회차"
         lines: List[str] = []
         if header:
-            lines.append(header)
-        elif counts is not None:
-            lines.append(
-                f"오늘 총 {counts.remaining}장 (새 {counts.new_count} · 복습 {counts.review_count + counts.learn_count})"
-            )
-        lines.append("")
-        lines.append(f"[{index}/{total}] {card.category} ({kind_tag})")
+            lines.extend([header, ""])
+        lines.append(f"{index}/{total}")
 
         if not card.is_new:
             history = self.store.list_card_history(card.card_id, limit=1, rated_only=True)
@@ -159,7 +152,7 @@ class SpeakingService:
         lines.append("")
         lines.append(card.prompt_text)
         lines.append("")
-        lines.append("45~90초 영어 음성 메시지를 보내세요.")
+        lines.append("음성 메시지로 답해 주세요.")
         return "\n".join(lines).strip()
 
     @staticmethod
@@ -211,10 +204,6 @@ class SpeakingService:
         )
 
         index = min(completed_so_far + 1, total_assigned)
-        header = (
-            f"오늘 총 {total_assigned}장 중 {len(cards)}장 남음 "
-            f"(새 {counts.new_count} · 복습 {counts.review_count + counts.learn_count})"
-        )
         return {
             "mode": "queue",
             "status": "question",
@@ -223,7 +212,7 @@ class SpeakingService:
             "recommended_ease": None,
             "show_rating_buttons": False,
             "counts": counts.model_dump(),
-            "message": self._format_card_prompt(card, index, total_assigned, counts=counts, header=header),
+            "message": self._format_card_prompt(card, index, total_assigned),
             "audio_bytes": None,
             "candidates": [],
         }
@@ -419,7 +408,7 @@ class SpeakingService:
             "recommended_ease": None,
             "show_rating_buttons": False,
             "counts": counts.model_dump(),
-            "message": self._format_card_prompt(next_card, index, total_assigned, counts=counts, header=header),
+            "message": self._format_card_prompt(next_card, index, total_assigned, header=header),
             "audio_bytes": None,
             "candidates": [],
         }
@@ -473,7 +462,7 @@ class SpeakingService:
             "show_rating_buttons": False,
             "counts": counts.model_dump(),
             "message": self._format_card_prompt(
-                next_card, index, total_assigned, counts=counts, header="다른 카드로 순서를 바꿨습니다."
+                next_card, index, total_assigned, header="다른 카드로 순서를 바꿨습니다."
             ),
             "audio_bytes": None,
             "candidates": [],

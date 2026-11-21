@@ -17,9 +17,15 @@ def test_daily_questions_has_72_unique_prompts_across_categories():
     for q in DAILY_QUESTIONS:
         assert q.id.startswith("daily_")
         assert q.category.strip()
-        assert q.title.strip()
-        assert q.prompt.strip()
-        assert len(q.bullets) >= 2
+        assert q.prompt.strip().endswith(("?", "."))
+        assert "\n" not in q.prompt
+
+
+def test_everyday_categories_come_before_tech_and_presentations():
+    cats = [q.category for q in DAILY_QUESTIONS]
+    first_later = min(i for i, c in enumerate(cats) if c in ("Opinions & Tech", "Projects & Presentations"))
+    assert all(c not in ("Opinions & Tech", "Projects & Presentations") for c in cats[:first_later])
+    assert first_later == 54
 
 
 def test_get_question_by_id_lookup():

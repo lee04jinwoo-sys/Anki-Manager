@@ -126,16 +126,12 @@ def test_seed_daily_questions_skips_existing_and_removes_legacy_tracker():
     q1 = DailyQuestion(
         id="daily_001",
         category="Campus",
-        title="Explaining major",
         prompt="Explain your major simply.",
-        bullets=["Point A", "Point B"],
     )
     q2 = DailyQuestion(
         id="daily_002",
         category="Toronto",
-        title="Transit tip",
         prompt="Share a TTC experience.",
-        bullets=["Point 1", "Point 2"],
     )
     anki = FakeAnki(
         existing_notes=[5001],
@@ -231,3 +227,21 @@ def test_answer_speaking_card_and_update_back_log():
     bad_anki = FakeAnki(answer_result=[False])
     with pytest.raises(RuntimeError):
         AnkiSpeakingDeck(invoke=bad_anki).answer_speaking_card(101, 3)
+
+
+def test_refresh_question_fronts_rewrites_only_changed_notes():
+    q1 = DailyQuestion(id="daily_001", category="Campus", prompt="What do you study?")
+    q2 = DailyQuestion(id="daily_002", category="Toronto", prompt="How is Toronto weather?")
+    anki = FakeAnki(
+        existing_notes=[1, 2, 3],
+        notes_info=[
+            {"noteId": 1, "tags": ["speaking::id::daily_001"], "fields": {"앞면": {"value": "### Old<br><br>x<br><br>- a"}}},
+            {"noteId": 2, "tags": ["speaking::id::daily_002"], "fields": {"앞면": {"value": "How is Toronto weather?"}}},
+            {"noteId": 3, "tags": ["speaking::id::daily_999"], "fields": {"앞면": {"value": "unknown"}}},
+        ],
+    )
+    deck = AnkiSpeakingDeck(invoke=anki)
+
+    assert deck.refresh_question_fronts([q1, q2]) == 1
+    updates = [p for a, p in anki.calls if a == "updateNoteFields"]
+    assert updates == [{"note": {"id": 1, "fields": {"앞면": "What do you study?"}}}]

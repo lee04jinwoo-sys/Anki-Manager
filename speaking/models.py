@@ -12,9 +12,7 @@ CardKind = Literal["sentence", "vocab", "grammar"]
 class DailyQuestion(BaseModel):
     id: str
     category: str
-    title: str
     prompt: str
-    bullets: List[str] = Field(default_factory=list)
 
 
 class SpeakingMetrics(BaseModel):

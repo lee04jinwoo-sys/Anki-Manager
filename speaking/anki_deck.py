@@ -72,11 +72,7 @@ def _format_back_log(history: Sequence[Dict[str, Any]]) -> str:
 
 
 def _format_question_front(q: DailyQuestion) -> str:
-    bullets = "<br>".join(f"- {b}" for b in q.bullets)
-    parts = [f"### {q.title}", "", q.prompt]
-    if bullets:
-        parts.extend(["", bullets])
-    return "<br>".join(parts)
+    return q.prompt
 
 
 class AnkiSpeakingDeck:
@@ -188,6 +184,25 @@ class AnkiSpeakingDeck:
             added += sum(1 for nid in res if nid)
 
         return {"added": added, "skipped": skipped}
+
+    def refresh_question_fronts(self, questions: Sequence[DailyQuestion]) -> int:
+        """이미 시딩된 노트의 앞면을 현재 질문 문구(질문 하나)로 갱신한다. 바뀐 노트 수를 돌려준다."""
+        nids = self._invoke("findNotes", query=f'tag:"{QUESTION_TAG}"') or []
+        if not nids:
+            return 0
+        by_id = {q.id: q for q in questions}
+        updated = 0
+        for n in self._invoke("notesInfo", notes=nids) or []:
+            extra = ((n.get("fields") or {}).get("기타") or {}).get("value", "")
+            q = by_id.get(_extract_topic_id(n.get("tags") or [], extra))
+            if not q:
+                continue
+            front = _format_question_front(q)
+            if ((n.get("fields") or {}).get("앞면") or {}).get("value", "") == front:
+                continue
+            self._invoke("updateNoteFields", note={"id": int(n["noteId"]), "fields": {"앞면": front}})
+            updated += 1
+        return updated
 
     def get_deck_counts(self) -> QueueCounts:
         raw = self._invoke("getDeckStats", decks=[SPEAKING_DECK]) or {}

@@ -16,11 +16,13 @@ def main() -> None:
     preset = deck.ensure_speaking_deck_and_preset()
     removed = deck.remove_legacy_tracker_card()
     seeded = deck.seed_daily_questions(DAILY_QUESTIONS)
+    refreshed = deck.refresh_question_fronts(DAILY_QUESTIONS)
     counts = deck.get_deck_counts()
 
     logger.info("Preset: %s", preset)
     logger.info("Legacy tracker notes removed: %d", removed)
     logger.info("Seeded daily questions: %s", seeded)
+    logger.info("Question fronts refreshed: %d", refreshed)
     logger.info("Deck counts: %s", counts.model_dump())
 
     anki_sync.anki_connect_sync()
