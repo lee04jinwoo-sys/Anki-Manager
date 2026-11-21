@@ -110,6 +110,14 @@ def analyze_transcript_metrics(
     )
 
 
+def _groq_filename(filename: str) -> str:
+    """텔레그램 음성은 `.oga`로 오는데 Groq가 거절하므로(내용은 ogg와 동일) `.ogg`로 바꿔 보낸다."""
+    path = Path(filename or "voice.ogg")
+    if path.suffix.lower() == ".oga":
+        return path.with_suffix(".ogg").name
+    return path.name
+
+
 class GroqWhisperClient:
     def __init__(
         self,
@@ -143,7 +151,7 @@ class GroqWhisperClient:
         resp = self._post(
             GROQ_TRANSCRIBE_URL,
             headers={"Authorization": f"Bearer {self.api_key}"},
-            files={"file": (filename, audio_bytes, "audio/ogg")},
+            files={"file": (_groq_filename(filename), audio_bytes, "audio/ogg")},
             data=data,
             timeout=self.timeout_sec,
         )

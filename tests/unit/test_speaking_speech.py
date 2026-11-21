@@ -131,3 +131,12 @@ def test_save_audio_file_writes_under_date_subdir(tmp_path):
     )
     assert saved == tmp_path / "2026-11-19" / "card_101_091530.ogg"
     assert saved.read_bytes() == b"OGG-RAW-BYTES"
+
+
+def test_telegram_oga_is_sent_to_groq_as_ogg():
+    from speaking.speech import _groq_filename
+
+    assert _groq_filename("file_12.oga") == "file_12.ogg"
+    assert _groq_filename("voice.OGA") == "voice.ogg"
+    assert _groq_filename("voice.ogg") == "voice.ogg"
+    assert _groq_filename("") == "voice.ogg"
