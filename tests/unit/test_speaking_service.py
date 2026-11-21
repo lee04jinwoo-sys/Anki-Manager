@@ -139,7 +139,8 @@ def test_v2_queue_retry_rate_summary_and_audio_archive(tmp_path):
     # 1) 아침/수동 큐 시작: 진행 표시 1/2와 질문만, 직전 기록 힌트 포함
     s = svc.start_or_resume_today()
     assert s["status"] == "question"
-    assert s["message"].startswith("1/2")
+    assert s["message"].rstrip().endswith("Explain your major.")
+    assert "1/2" not in s["message"]
     assert "새 카드" not in s["message"]
     assert "I major in engineering." in s["message"]
 
@@ -165,7 +166,7 @@ def test_v2_queue_retry_rate_summary_and_audio_archive(tmp_path):
     assert len(deck.back_updates) == 1
     assert len(synced) == 1
     assert r1["status"] == "next_card"
-    assert "2/2" in r1["message"]
+    assert r1["message"].rstrip().endswith("Describe a TTC commute.")
     assert "TTC" in r1["message"]
 
     # 5) 카드 202 녹음 후 Easy(4) 평가 -> 0장 남음 -> 하루 요약 + 후보 버튼 반환

@@ -138,7 +138,6 @@ class SpeakingService:
         lines: List[str] = []
         if header:
             lines.extend([header, ""])
-        lines.append(f"{index}/{total}")
 
         if not card.is_new:
             history = self.store.list_card_history(card.card_id, limit=1, rated_only=True)
@@ -148,11 +147,9 @@ class SpeakingService:
                 lines.append(
                     f"(직전 {prev['session_date']}: 점수 {prev.get('score') or '-'} · {prev.get('wpm', 0):.0f} WPM{model_hint})"
                 )
+                lines.append("")
 
-        lines.append("")
         lines.append(card.prompt_text)
-        lines.append("")
-        lines.append("음성 메시지로 답해 주세요.")
         return "\n".join(lines).strip()
 
     @staticmethod
