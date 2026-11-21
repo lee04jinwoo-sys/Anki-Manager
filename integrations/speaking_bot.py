@@ -27,6 +27,7 @@ USAGE = (
     "/today : 오늘의 스피킹 큐 시작/이어하기\n"
     "/skip : 다음 카드로 순서 넘기기\n"
     "/summary : 오늘 말한 세트 요약 & 카드 후보 보기\n"
+    "/last : 최근 답변의 문장별 교정 보기\n"
     "/stats : 스트릭 · 최근 14일 WPM/필러 통계\n"
     "/debrief : 외부 대화 막힌 표현 회수 (큐 완료 후엔 음성을 바로 보내도 자동 회수)"
 )
@@ -148,6 +149,9 @@ def _handle_command(text, chat_id, backend, send):
         _send_action_response(res, chat_id, send)
     elif cmd == "/summary":
         res = backend("GET", "/api/speaking/summary", None)
+        _send_action_response(res, chat_id, send)
+    elif cmd == "/last":
+        res = backend("GET", "/api/speaking/last", None)
         _send_action_response(res, chat_id, send)
     elif cmd == "/stats":
         res = backend("GET", "/api/speaking/stats", None)

@@ -100,11 +100,12 @@ def test_v2_speaking_api_endpoints_end_to_end(monkeypatch, tmp_path):
     r_rate = client.post("/api/speaking/rate", json={"card_id": 701, "ease": 3})
     assert r_rate.status_code == 200
     assert r_rate.json()["status"] == "day_completed"
-    cid = r_rate.json()["candidates"][0]["id"]
+    assert r_rate.json()["candidates"] == []
+    assert created[0][1]["tags"] == ["speaking", "speaking::auto"]
 
-    r_add = client.post(f"/api/speaking/candidates/{cid}/add")
-    assert r_add.status_code == 200
-    assert created[0][1]["tags"] == ["speaking"]
+    r_last = client.get("/api/speaking/last")
+    assert r_last.status_code == 200
+    assert "최근 답변" in r_last.json()["message"]
 
     r_sum = client.get("/api/speaking/summary")
     assert r_sum.status_code == 200

@@ -164,7 +164,7 @@ def test_v2_queue_retry_rate_summary_and_audio_archive(tmp_path):
     r1 = svc.rate_current_card(101, 3)
     assert deck.answered == [(101, 3)]
     assert len(deck.back_updates) == 1
-    assert len(synced) == 1
+    assert len(synced) == 2  # 1차 녹음 자동 추가 1회 + 평가 1회 (카드 단위가 아니라 답변 단위)
     assert r1["status"] == "next_card"
     assert r1["message"].rstrip().endswith("Describe a TTC commute.")
     assert "TTC" in r1["message"]
@@ -173,14 +173,15 @@ def test_v2_queue_retry_rate_summary_and_audio_archive(tmp_path):
     svc.submit_voice(b"RAW-3", filename="v3.ogg")
     r2 = svc.rate_current_card(202, 4)
     assert r2["status"] == "day_completed"
-    assert len(r2["candidates"]) == 1
+    assert r2["candidates"] == []  # 후보는 이미 자동 추가돼 요약에 버튼으로 나오지 않음
     assert "완료" in r2["message"]
     assert store.compute_streaks(today=dt.date(2026, 11, 19))["current"] == 1
 
-    # 6) 후보 등록 버튼 -> speaking 태그
-    reg = svc.register_candidate(r2["candidates"][0]["id"])
-    assert reg["success"] is True
-    assert added_cards[0][1]["tags"] == ["speaking"]
+    # 6) 후보는 답변 직후 자동 추가됨 (speaking + speaking::auto 태그, 같은 문장은 한 번만)
+    assert len(added_cards) == 1
+    assert added_cards[0][1]["tags"] == ["speaking", "speaking::auto"]
+    again = svc.register_candidate(store.list_today_candidates("2026-11-19")[0]["id"])
+    assert again["already_added"] is True
 
     # 7) 오늘 0장 상태에서 음성 -> 외부 대화 회수 모드 (answerCards 미호출)
     debrief = svc.submit_voice(b"RAW-DEBRIEF", filename="d.ogg")
@@ -258,3 +259,25 @@ def test_register_attempt_candidates_adds_all_and_skips_already_added(tmp_path):
     assert created == ["vocab"]
     assert out["added"] == 1 and out["skipped"] == 1 and out["failed"] == 0
     assert out["success"] is True
+
+
+def test_auto_add_respects_daily_cap_and_notifies_once(tmp_path):
+    from speaking import service as svc_mod
+    from speaking.models import CardCandidate
+
+    store = SpeakingStore(tmp_path / "speaking.db")
+    created, synced = [], []
+    svc = SpeakingService(
+        store=store,
+        anki_deck=FakeAnkiDeck([]),
+        card_creator=lambda kind, payload: (created.append(kind) or {"success": True, "note_id": 900 + len(created)}),
+        on_anki_changed=lambda: synced.append(1),
+        today_fn=lambda: dt.date(2026, 11, 19),
+    )
+    cands = [CardCandidate(kind="sentence", text=f"Sentence {i}.", translation="t") for i in range(svc_mod.AUTO_ADD_DAILY_CAP["sentence"] + 3)]
+    saved = svc._persist_candidates("2026-11-19", 1, cands)
+    line = svc._auto_add_candidates("2026-11-19", saved)
+
+    assert len(created) == svc_mod.AUTO_ADD_DAILY_CAP["sentence"]
+    assert "3장 건너뜀" in line
+    assert synced == [1]

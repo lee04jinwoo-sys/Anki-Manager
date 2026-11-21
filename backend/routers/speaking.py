@@ -119,6 +119,11 @@ def rate_speaking_card(req: SpeakingRateRequest) -> SpeakingActionResponse:
     return _encode_response(res)
 
 
+@router.get("/last", response_model=SpeakingActionResponse)
+def last_speaking_feedback() -> SpeakingActionResponse:
+    return _encode_response(get_speaking_service().get_last_feedback())
+
+
 @router.post("/skip", response_model=SpeakingActionResponse)
 def skip_speaking_card() -> SpeakingActionResponse:
     res = get_speaking_service().skip_current_card()

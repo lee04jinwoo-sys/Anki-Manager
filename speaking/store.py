@@ -239,6 +239,11 @@ class SpeakingStore:
             "created_at": row["created_at"],
         }
 
+    def get_latest_attempt(self) -> Optional[Dict[str, Any]]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM card_attempts WHERE mode='card' ORDER BY id DESC LIMIT 1").fetchone()
+            return self._row_to_attempt(row) if row else None
+
     def get_latest_attempt_for_card_today(
         self, session_date: str, card_id: int
     ) -> Optional[Dict[str, Any]]:

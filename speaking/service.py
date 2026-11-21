@@ -27,6 +27,9 @@ logger = logging.getLogger("speaking.service")
 
 TORONTO_TZ = ZoneInfo("America/Toronto")
 SPEAKING_CARD_TAG = "speaking"
+AUTO_CARD_TAG = "speaking::auto"
+# 자동 추가 하루 상한(종류별). 넘치는 후보는 DB에 남기고 카드로는 만들지 않는다.
+AUTO_ADD_DAILY_CAP = {"sentence": 10, "vocab": 10, "grammar": 2}
 _EASE_NAMES = {1: "Again", 2: "Hard", 3: "Good", 4: "Easy"}
 
 
@@ -269,21 +272,22 @@ class SpeakingService:
             score=ev.score,
         )
         saved_candidates = self._persist_candidates(today_str, attempt_id, ev.card_candidates)
+        auto_line = self._auto_add_candidates(today_str, saved_candidates)
         self.store.set_queue_state(today_str, active_card_id=card.card_id, retry_mode=False)
 
         audio = self.tts_fn(ev.native_model) if ev.native_model else None
         ease_name = _EASE_NAMES.get(ev.recommended_ease, "Good")
         lines = [
-            f"[채점 · {card.category}] {_format_metrics(tr.metrics)}",
+            f"[채점] {_format_metrics(tr.metrics)}",
             delta_line,
             f"점수: {ev.score}/10 (추천: {ease_name})",
             f"피드백: {ev.summary}",
         ]
-        if ev.corrections:
-            lines.append("\n교정:\n" + "\n".join(f"- {c}" for c in ev.corrections))
         if ev.native_model:
-            lines.append(f"\n원어민 대안:\n{ev.native_model}")
-        lines.append("\n아래 버튼으로 [재녹음]하거나 Anki 평가(Again/Hard/Good/Easy)를 선택하세요.")
+            lines.append(f"\n교정된 답변:\n{ev.native_model}")
+        if auto_line:
+            lines.append(f"\n{auto_line}")
+        lines.append("\n문장별 교정은 /last 로 볼 수 있습니다. [재녹음]하거나 Anki 평가(Again/Hard/Good/Easy)를 선택하세요.")
 
         return {
             "mode": "card",
@@ -295,7 +299,7 @@ class SpeakingService:
             "counts": counts.model_dump(),
             "message": "\n".join(line for line in lines if line),
             "audio_bytes": audio,
-            "candidates": saved_candidates,
+            "candidates": [],
         }
 
     def request_retry(self) -> Dict[str, Any]:
@@ -472,7 +476,7 @@ class SpeakingService:
         rated_attempts = [a for a in attempts if a.get("ease") is not None]
         sample = rated_attempts or attempts
         streaks = self.store.compute_streaks(today=today)
-        candidates = self.store.list_today_candidates(today_str)
+        candidates = [c for c in self.store.list_today_candidates(today_str) if c.get("added_note_id") is None]
 
         if sample:
             avg_wpm = round(sum(a["wpm"] for a in sample) / len(sample), 1)
@@ -500,7 +504,7 @@ class SpeakingService:
             lines.append("\n오늘 핵심 원어민 표현:")
             lines.extend(f"- {m}" for m in best_models)
         if candidates:
-            lines.append("\n아래 버튼에서 Anki Sentence/Vocab/Grammar 덱에 넣을 표현만 골라 추가하세요:")
+            lines.append("\n아직 Anki에 넣지 않은 후보입니다. 필요한 것만 버튼으로 추가하세요:")
 
         return {
             "mode": "queue",
@@ -561,7 +565,7 @@ class SpeakingService:
             "candidates": saved,
         }
 
-    def register_candidate(self, candidate_id: int) -> Dict[str, Any]:
+    def register_candidate(self, candidate_id: int, auto: bool = False, notify: bool = True) -> Dict[str, Any]:
         row = self.store.get_candidate(candidate_id)
         if not row:
             return {"success": False, "error": "후보를 찾을 수 없습니다.", "message": "후보를 찾을 수 없습니다."}
@@ -574,12 +578,13 @@ class SpeakingService:
             }
 
         cand = CardCandidate(**row["candidate"])
+        card_tags = [SPEAKING_CARD_TAG, AUTO_CARD_TAG] if auto else [SPEAKING_CARD_TAG]
         if cand.kind == "vocab":
             payload: Dict[str, Any] = {
                 "word": cand.text,
                 "meaning": cand.translation,
                 "use_free_router": True,
-                "tags": [SPEAKING_CARD_TAG],
+                "tags": list(card_tags),
             }
             target_kind = "vocab"
             label = "단어"
@@ -589,7 +594,7 @@ class SpeakingService:
                 "answer": cand.answer,
                 "distractors": cand.distractors,
                 "translation": cand.translation,
-                "tags": [SPEAKING_CARD_TAG],
+                "tags": list(card_tags),
             }
             target_kind = "grammar"
             label = "문법"
@@ -598,7 +603,7 @@ class SpeakingService:
                 "sentence": cand.text,
                 "translation": cand.translation,
                 "use_free_router": True,
-                "tags": [SPEAKING_CARD_TAG],
+                "tags": list(card_tags),
             }
             target_kind = "sentence"
             label = "문장"
@@ -612,12 +617,65 @@ class SpeakingService:
         note_id = res.get("note_id")
         if note_id:
             self.store.mark_candidate_added(candidate_id, int(note_id))
-        self._notify_anki_changed()
+        if notify:
+            self._notify_anki_changed()
         return {
             "success": True,
             "note_id": note_id,
             "message": f"{label} 카드 등록 완료 ({SPEAKING_CARD_TAG}): {cand.text}",
         }
+
+    def _auto_add_candidates(self, today_str: str, saved: List[Dict[str, Any]]) -> str:
+        """채점 후 나온 후보를 하루 상한 안에서 자동으로 Anki 카드로 만들고, 메시지 한 줄을 돌려준다."""
+        if not saved:
+            return ""
+        today_rows = self.store.list_today_candidates(today_str)
+        used = {"sentence": 0, "vocab": 0, "grammar": 0}
+        for r in today_rows:
+            if r.get("added_note_id") is not None and r.get("kind") in used:
+                used[r["kind"]] += 1
+
+        added = {"sentence": 0, "vocab": 0, "grammar": 0}
+        vocab_texts: List[str] = []
+        capped = failed = 0
+        for cand in saved:
+            kind = cand.get("kind", "sentence")
+            if kind not in added:
+                kind = "sentence"
+            if used[kind] + added[kind] >= AUTO_ADD_DAILY_CAP[kind]:
+                capped += 1
+                continue
+            try:
+                res = self.register_candidate(int(cand["id"]), auto=True, notify=False)
+            except Exception as e:
+                logger.warning("Auto-add failed (candidate %s): %s", cand.get("id"), e)
+                failed += 1
+                continue
+            if not res.get("success"):
+                failed += 1
+            elif res.get("duplicate") or res.get("already_added"):
+                continue
+            else:
+                added[kind] += 1
+                if kind == "vocab":
+                    vocab_texts.append(cand.get("text", ""))
+
+        if any(added.values()):
+            self._notify_anki_changed()  # 답변 한 번에 동기화 한 번
+
+        parts = []
+        if added["sentence"]:
+            parts.append(f"문장 {added['sentence']}")
+        if added["vocab"]:
+            parts.append(f"표현 {added['vocab']} ({', '.join(vocab_texts)})")
+        if added["grammar"]:
+            parts.append(f"문법 {added['grammar']}")
+        line = "📚 Anki 자동 추가: " + (" · ".join(parts) if parts else "새로 추가된 카드 없음 (이미 있음)")
+        if capped:
+            line += f" · 하루 상한으로 {capped}장 건너뜀"
+        if failed:
+            line += f" · {failed}장 실패"
+        return line
 
     def register_attempt_candidates(self, attempt_id: int) -> Dict[str, Any]:
         """한 번의 답변에서 나온 후보를 전부 Anki에 등록한다(이미 등록된 것은 건너뜀)."""
@@ -646,6 +704,17 @@ class SpeakingService:
             "failed": failed,
             "message": "전부 추가: " + " · ".join(parts),
         }
+
+    def get_last_feedback(self) -> Dict[str, Any]:
+        row = self.store.get_latest_attempt()
+        if not row:
+            return {"mode": "queue", "status": "empty", "message": "아직 녹음 기록이 없습니다.", "candidates": []}
+        fb = row.get("feedback") or {}
+        lines = [f"최근 답변 ({row['session_date']}) 점수 {row.get('score') or '-'}/10", "", f"Q. {row['prompt_text']}"]
+        corrections = fb.get("corrections") or []
+        lines.append("\n문장별 교정:" if corrections else "\n교정할 문장이 없습니다.")
+        lines.extend(f"- {c}" for c in corrections)
+        return {"mode": "queue", "status": "last", "message": "\n".join(lines), "candidates": []}
 
     def get_stats(self) -> Dict[str, Any]:
         today = self.today_fn()
