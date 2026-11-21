@@ -64,7 +64,7 @@ def _build_evaluation_markup(card_id, recommended_ease):
 def _build_candidate_markup(candidates):
     if not candidates:
         return None
-    kind_label = {"sentence": "문장", "vocab": "단어", "grammar": "문법"}
+    kind_label = {"sentence": "문장", "vocab": "표현", "grammar": "문법"}
     rows = []
     for c in candidates:
         cid = c.get("id")
@@ -75,22 +75,53 @@ def _build_candidate_markup(candidates):
         if len(preview) > 36:
             preview = preview[:33] + "..."
         rows.append([{"text": f"+ [{k}] {preview}", "callback_data": f"spk_add:{cid}"}])
-    return {"inline_keyboard": rows} if rows else None
+    if not rows:
+        return None
+    attempt_id = next((c.get("attempt_id") for c in candidates if c.get("attempt_id") is not None), None)
+    if len(rows) > 1 and attempt_id is not None:
+        rows.append([{"text": f"+ 전부 추가 ({len(rows)}장)", "callback_data": f"spk_addall:{attempt_id}"}])
+    return {"inline_keyboard": rows}
+
+
+_TG_LIMIT = 4000  # 텔레그램 메시지 상한 4096자에 여유를 둔다
+
+
+def _split_text(text, limit=_TG_LIMIT):
+    chunks, cur = [], ""
+    for line in text.split("\n"):
+        while len(line) > limit:
+            if cur:
+                chunks.append(cur)
+                cur = ""
+            chunks.append(line[:limit])
+            line = line[limit:]
+        if cur and len(cur) + 1 + len(line) > limit:
+            chunks.append(cur)
+            cur = line
+        else:
+            cur = f"{cur}\n{line}" if cur else line
+    if cur:
+        chunks.append(cur)
+    return chunks or [""]
 
 
 def _call_send(send, chat_id, text, reply_markup=None):
-    if reply_markup is not None:
-        send(chat_id, text, reply_markup=reply_markup)
-    else:
-        send(chat_id, text)
+    chunks = _split_text(text)
+    for i, chunk in enumerate(chunks):
+        if reply_markup is not None and i == len(chunks) - 1:
+            send(chat_id, chunk, reply_markup=reply_markup)
+        else:
+            send(chat_id, chunk)
 
 
 def _send_action_response(res, chat_id, send, send_voice=None):
     markup = None
-    if res.get("status") == "evaluated" and res.get("card_id") is not None:
+    candidates = res.get("candidates") or []
+    evaluated = res.get("status") == "evaluated" and res.get("card_id") is not None
+    if evaluated:
         markup = _build_evaluation_markup(res["card_id"], res.get("recommended_ease"))
-    elif res.get("candidates"):
-        markup = _build_candidate_markup(res.get("candidates"))
+    elif candidates:
+        markup = _build_candidate_markup(candidates)
 
     _call_send(send, chat_id, res.get("message") or "완료", reply_markup=markup)
 
@@ -100,6 +131,11 @@ def _send_action_response(res, chat_id, send, send_voice=None):
             send_voice(chat_id, base64.b64decode(audio_b64), "원어민 모범 발화 듣기")
         except Exception as e:
             logger.warning("음성 답장 전송 실패: %s", type(e).__name__)
+
+    if evaluated and candidates:
+        cand_markup = _build_candidate_markup(candidates)
+        if cand_markup:
+            _call_send(send, chat_id, "Anki에 넣을 후보 (누르면 문장/단어 덱에 추가)", reply_markup=cand_markup)
 
 
 def _handle_command(text, chat_id, backend, send):
@@ -163,6 +199,15 @@ def _handle_callback(cb, allowed_chat_id, backend, send, answer_callback):
         if answer_callback and cb_id:
             answer_callback(cb_id, "Anki 반영 완료")
         _send_action_response(res, target_chat, send)
+        return
+
+    if data.startswith("spk_addall:"):
+        attempt_id = data.split(":", 1)[1]
+        res = backend("POST", f"/api/speaking/attempts/{attempt_id}/candidates/add-all", {})
+        ok = bool(res.get("success"))
+        if answer_callback and cb_id:
+            answer_callback(cb_id, "등록 완료" if ok else "일부 실패")
+        _call_send(send, target_chat, res.get("message") or ("등록 완료" if ok else "등록 실패"))
         return
 
     if data.startswith("spk_add:"):

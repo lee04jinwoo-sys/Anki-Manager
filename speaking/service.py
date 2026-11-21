@@ -125,7 +125,7 @@ class SpeakingService:
         saved = []
         for cand in candidates:
             cid = self.store.save_candidate(session_date, attempt_id, cand)
-            saved.append({"id": cid, **cand.model_dump()})
+            saved.append({"id": cid, "attempt_id": attempt_id, **cand.model_dump()})
         return saved
 
     def _format_card_prompt(
@@ -268,7 +268,7 @@ class SpeakingService:
             feedback=ev.model_dump(),
             score=ev.score,
         )
-        self._persist_candidates(today_str, attempt_id, ev.card_candidates)
+        saved_candidates = self._persist_candidates(today_str, attempt_id, ev.card_candidates)
         self.store.set_queue_state(today_str, active_card_id=card.card_id, retry_mode=False)
 
         audio = self.tts_fn(ev.native_model) if ev.native_model else None
@@ -295,7 +295,7 @@ class SpeakingService:
             "counts": counts.model_dump(),
             "message": "\n".join(line for line in lines if line),
             "audio_bytes": audio,
-            "candidates": [],
+            "candidates": saved_candidates,
         }
 
     def request_retry(self) -> Dict[str, Any]:
@@ -617,6 +617,34 @@ class SpeakingService:
             "success": True,
             "note_id": note_id,
             "message": f"{label} 카드 등록 완료 ({SPEAKING_CARD_TAG}): {cand.text}",
+        }
+
+    def register_attempt_candidates(self, attempt_id: int) -> Dict[str, Any]:
+        """한 번의 답변에서 나온 후보를 전부 Anki에 등록한다(이미 등록된 것은 건너뜀)."""
+        rows = self.store.list_candidates_for_attempt(attempt_id)
+        added = skipped = failed = 0
+        for row in rows:
+            if row.get("added_note_id") is not None:
+                skipped += 1
+                continue
+            res = self.register_candidate(int(row["id"]))
+            if not res.get("success"):
+                failed += 1
+            elif res.get("duplicate") or res.get("already_added"):
+                skipped += 1
+            else:
+                added += 1
+        parts = [f"{added}장 등록"]
+        if skipped:
+            parts.append(f"{skipped}장은 이미 있음")
+        if failed:
+            parts.append(f"{failed}장 실패")
+        return {
+            "success": failed == 0,
+            "added": added,
+            "skipped": skipped,
+            "failed": failed,
+            "message": "전부 추가: " + " · ".join(parts),
         }
 
     def get_stats(self) -> Dict[str, Any]:

@@ -22,6 +22,7 @@ LONG_PAUSE_THRESHOLD_SEC = 1.5
 # Groq Whisper word timestamp는 단어 앞 침묵을 다음 단어의 [start, end] 구간에 흡수하는 경향이 있어
 # 단일 단어 발화 상한(0.6초)을 초과한 잔여 구간도 침묵으로 추정한다.
 MAX_NORMAL_WORD_SPAN_SEC = 0.6
+_TTS_MAX_CHARS = 4000
 DEFAULT_AUDIO_DIR = Path(os.getenv("SPEAKING_AUDIO_DIR", str(Path.home() / "speaking_audio")))
 
 
@@ -171,6 +172,8 @@ def synthesize_coaching_audio(text: str, tts_client: Any = None) -> Optional[byt
     clean = (text or "").strip()
     if not clean:
         return None
+    if len(clean) > _TTS_MAX_CHARS:  # Google TTS는 요청당 5000바이트 제한
+        clean = clean[:_TTS_MAX_CHARS].rsplit(".", 1)[0] + "."
     try:
         from google.cloud import texttospeech
     except Exception:

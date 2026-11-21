@@ -136,6 +136,11 @@ def speaking_stats() -> Dict[str, Any]:
     return get_speaking_service().get_stats()
 
 
+@router.post("/attempts/{attempt_id}/candidates/add-all")
+def add_attempt_candidates(attempt_id: int) -> Dict[str, Any]:
+    return get_speaking_service().register_attempt_candidates(attempt_id)
+
+
 @router.post("/candidates/{candidate_id}/add")
 def add_speaking_candidate(candidate_id: int) -> Dict[str, Any]:
     return get_speaking_service().register_candidate(candidate_id)

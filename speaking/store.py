@@ -338,6 +338,16 @@ class SpeakingStore:
                 for r in rows
             ]
 
+    def list_candidates_for_attempt(self, attempt_id: int) -> List[Dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM card_candidates WHERE attempt_id=? ORDER BY id ASC", (attempt_id,)
+            ).fetchall()
+            return [
+                {"id": r["id"], **json.loads(r["candidate_json"]), "added_note_id": r["added_note_id"]}
+                for r in rows
+            ]
+
     def mark_candidate_added(self, candidate_id: int, note_id: int) -> None:
         with self._connect() as conn:
             conn.execute(

@@ -37,7 +37,7 @@ def _parse_candidates(raw_items: Any) -> List[CardCandidate]:
     out: List[CardCandidate] = []
     if not isinstance(raw_items, list):
         return out
-    for item in raw_items[:3]:
+    for item in raw_items[:30]:
         if not isinstance(item, dict):
             continue
         kind = str(item.get("kind") or "sentence").strip().lower()
@@ -59,6 +59,20 @@ def _parse_candidates(raw_items: Any) -> List[CardCandidate]:
                 distractors=[str(d).strip() for d in distractors if str(d).strip()][:3],
             )
         )
+    return _cap_by_kind(out)
+
+
+_CANDIDATE_CAPS = {"sentence": 5, "vocab": 5, "grammar": 2}
+
+
+def _cap_by_kind(items: List[CardCandidate]) -> List[CardCandidate]:
+    """문장 5개 · 표현 5개 · 문법 2개까지만 남긴다(종류별 상한)."""
+    seen = {k: 0 for k in _CANDIDATE_CAPS}
+    out: List[CardCandidate] = []
+    for c in items:
+        if seen[c.kind] < _CANDIDATE_CAPS[c.kind]:
+            seen[c.kind] += 1
+            out.append(c)
     return out
 
 
@@ -80,7 +94,7 @@ def _to_evaluation(data: Dict[str, Any]) -> CardEvaluation:
         score=score,
         recommended_ease=ease,
         summary=str(data.get("summary") or "").strip() or "피드백 요약 없음",
-        corrections=[str(c).strip() for c in corrections if str(c).strip()][:3],
+        corrections=[str(c).strip() for c in corrections if str(c).strip()][:40],
         native_model=str(data.get("native_model") or "").strip(),
         card_candidates=_parse_candidates(data.get("card_candidates")),
     )
@@ -118,7 +132,8 @@ Question:
 User Transcript: {transcript}
 Metrics: duration={metrics.duration_sec}s, words={metrics.word_count}, wpm={metrics.wpm}, fillers={metrics.filler_count}, long_pauses={metrics.long_pause_count}, max_pause={metrics.max_pause_sec}s
 
-Identify ONLY high-value fixes (Korean-English literal translations, awkward verbs/prepositions, vague phrasing).
+Go through the whole answer sentence by sentence. For every sentence that is ungrammatical, a literal Korean-English translation,
+or unnatural in verbs/prepositions/word choice, give a correction. Skip sentences that are already fine. There is no limit on the number of corrections.
 Suggest recommended_ease for Anki FSRS: 1=Again (struggled/off-topic/severe pauses), 2=Hard (understood but choppy/many literal errors), 3=Good (clear & natural enough), 4=Easy (fluent, idiomatic, crisp).
 
 Return JSON:
@@ -126,20 +141,18 @@ Return JSON:
   "score": 1.0-10.0,
   "recommended_ease": 1 | 2 | 3 | 4,
   "summary": "2 crisp Korean sentences: fluency/delivery note + one concrete upgrade point",
-  "corrections": ["up to 3 items: 'what user said -> natural English (Korean reason)'"],
-  "native_model": "1-2 crisp natural native sentences expressing the user's core point cleanly (for TTS playback)",
+  "corrections": ["one item per sentence that needed fixing: 'what user said -> natural English (Korean reason)'"],
+  "native_model": "the user's WHOLE answer rewritten as natural spoken English, keeping their content and order and roughly their length (for TTS playback)",
   "card_candidates": [
     {{
-      "kind": "sentence" | "vocab" | "grammar",
-      "text": "natural English sentence or expression (for grammar, full corrected sentence)",
-      "translation": "natural Korean translation",
-      "reason": "short Korean note why this helps",
-      "answer": "only if kind==grammar: exact single-occurrence token to blank",
-      "distractors": ["only if kind==grammar: user's wrong form"]
+      "kind": "sentence" | "vocab",
+      "text": "for sentence: the user's own sentence corrected into natural English; for vocab: a genuinely useful word or expression from the corrected answer",
+      "translation": "natural Korean translation (for vocab: the Korean meaning)",
+      "reason": "short Korean note why this helps"
     }}
   ]
 }}
-Limit card_candidates to 0-2 genuinely useful expressions the user stumbled on.
+card_candidates rules: up to 5 items with kind "sentence" (the most valuable corrected sentences) and, only if there are genuinely useful expressions, up to 5 items with kind "vocab". Use an empty list if nothing is worth saving.
 """
         return self._ask(user_prompt, temperature=0.3)
 
@@ -164,8 +177,8 @@ Return JSON:
   "score": 1.0-10.0,
   "recommended_ease": 1 | 2 | 3 | 4,
   "summary": "2 crisp Korean sentences comparing Retry vs Attempt 1 (clarity, hesitation drop, corrections applied)",
-  "corrections": ["up to 2 remaining rough spots if any"],
-  "native_model": "1-2 tight native sentences if helpful, else empty string",
+  "corrections": ["one item per remaining rough sentence: 'what user said -> natural English (Korean reason)'"],
+  "native_model": "the Retry answer rewritten as natural spoken English, keeping content and order",
   "card_candidates": [
     {{
       "kind": "sentence" | "vocab",

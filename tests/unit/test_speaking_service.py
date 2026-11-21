@@ -235,3 +235,26 @@ def test_duplicate_rating_is_ignored(tmp_path):
 
     assert again["status"] == "already_rated"
     assert deck.answered == [(101, 3)]
+
+
+def test_register_attempt_candidates_adds_all_and_skips_already_added(tmp_path):
+    from speaking.models import CardCandidate
+
+    store = SpeakingStore(tmp_path / "speaking.db")
+    ids = [
+        store.save_candidate("2026-11-19", 7, CardCandidate(kind="sentence", text="Sentence one.", translation="문장 하나")),
+        store.save_candidate("2026-11-19", 7, CardCandidate(kind="vocab", text="derived from", translation="~에서 유래하다")),
+    ]
+    store.mark_candidate_added(ids[0], 555)
+    created = []
+    svc = SpeakingService(
+        store=store,
+        anki_deck=FakeAnkiDeck([]),
+        card_creator=lambda kind, payload: (created.append(kind) or {"success": True, "note_id": 991}),
+        today_fn=lambda: dt.date(2026, 11, 19),
+    )
+    out = svc.register_attempt_candidates(7)
+
+    assert created == ["vocab"]
+    assert out["added"] == 1 and out["skipped"] == 1 and out["failed"] == 0
+    assert out["success"] is True

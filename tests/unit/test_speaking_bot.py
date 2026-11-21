@@ -150,3 +150,46 @@ def test_error_text_hides_non_backend_exception_details():
     secret = "https://api.telegram.org/file/bot123:SECRET/voice.ogg"
     assert sb._safe_error(Boom(secret)) == "Boom"
     assert sb._safe_error(sb.BackendError("백엔드 연결 실패")) == "백엔드 연결 실패"
+
+
+def test_long_message_is_split_under_telegram_limit_with_markup_on_last_chunk():
+    sent = []
+    text = "\n".join(f"line {i} " + "x" * 90 for i in range(120))  # ~11k chars
+    sb._call_send(lambda cid, t, **kw: sent.append((t, kw)), ALLOWED, text, reply_markup={"inline_keyboard": []})
+
+    assert len(sent) >= 3
+    assert all(len(t) <= 4000 for t, _ in sent)
+    assert "reply_markup" not in sent[0][1]
+    assert "reply_markup" in sent[-1][1]
+    assert "\n".join(t for t, _ in sent) == text
+
+
+def test_evaluated_voice_sends_candidates_with_add_all_button():
+    cands = [
+        {"id": 11, "attempt_id": 7, "kind": "sentence", "text": "I mainly study biomolecular engineering."},
+        {"id": 12, "attempt_id": 7, "kind": "vocab", "text": "derived from"},
+    ]
+    backend = FakeBackend({
+        ("POST", "/api/speaking/voice"): {
+            "status": "evaluated", "card_id": 701, "recommended_ease": 3, "message": "채점", "candidates": cands,
+        },
+        ("POST", "/api/speaking/attempts/7/candidates/add-all"): {"success": True, "message": "전부 추가: 2장 등록"},
+    })
+    sent = []
+    send = lambda cid, text, **kw: sent.append((text, kw))
+    sb.process_updates(
+        [{"update_id": 5, "message": {"chat": {"id": ALLOWED}, "voice": {"file_id": "F"}}}],
+        ALLOWED, backend, send, download_file=lambda fid: (b"x", "v.oga"), send_voice=lambda *a, **k: None,
+    )
+    assert sent[0][0] == "채점"
+    rows = sent[1][1]["reply_markup"]["inline_keyboard"]
+    assert [r[0]["callback_data"] for r in rows] == ["spk_add:11", "spk_add:12", "spk_addall:7"]
+    assert "[표현]" in rows[1][0]["text"]
+
+    sent.clear()
+    sb.process_updates(
+        [{"update_id": 6, "callback_query": {"id": "c", "from": {"id": ALLOWED},
+          "message": {"chat": {"id": ALLOWED}}, "data": "spk_addall:7"}}],
+        ALLOWED, backend, send, answer_callback=lambda *a, **k: None,
+    )
+    assert sent[0][0] == "전부 추가: 2장 등록"
