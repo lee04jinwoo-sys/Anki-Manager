@@ -251,3 +251,31 @@ def test_auto_add_respects_daily_cap_and_notifies_once(tmp_path):
     assert len(created) == svc_mod.AUTO_ADD_DAILY_CAP["sentence"]
     assert "3장 건너뜀" in line
     assert synced == [1]
+
+
+def test_short_recording_is_rejected_without_grading_or_saving(tmp_path):
+    from speaking.models import SpeakingMetrics, TranscriptionResult
+
+    class ShortSTT:
+        def transcribe(self, audio_bytes, filename="voice.ogg", language="en"):
+            return TranscriptionResult(transcript="oops", metrics=SpeakingMetrics(duration_sec=3.0, word_count=1, wpm=20.0))
+
+    class ExplodingCoach:
+        def evaluate_card(self, *a, **k):
+            raise AssertionError("짧은 녹음은 채점하면 안 된다")
+
+    store = SpeakingStore(tmp_path / "speaking.db")
+    cards = [SpeakingCard(card_id=101, note_id=501, topic_id="daily_001", prompt_text="Q1", is_new=True)]
+    audio_dir = tmp_path / "audio"
+    svc = SpeakingService(
+        store=store, queue=FakeAnkiDeck(cards), stt=ShortSTT(), coach=ExplodingCoach(),
+        tts_fn=lambda t: None, audio_dir=audio_dir, today_fn=lambda: dt.date(2026, 11, 19),
+    )
+    svc.start_or_resume_today()
+    out = svc.submit_voice(b"RAW")
+
+    assert out["status"] == "too_short"
+    assert "30초" in out["message"]
+    assert store.get_latest_attempt_for_card_today("2026-11-19", 101) is None
+    assert not list(audio_dir.rglob("*.ogg"))
+    assert svc.start_or_resume_today()["card_id"] == 101  # 같은 질문 유지

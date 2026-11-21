@@ -22,7 +22,7 @@ class _FakeSTT:
     def transcribe(self, audio_bytes: bytes, filename: str = "voice.ogg", language="en"):
         return TranscriptionResult(
             transcript="Hello testing speaking queue.",
-            metrics=SpeakingMetrics(duration_sec=5.0, word_count=10, wpm=120.0, filler_count=0, long_pause_count=0, max_pause_sec=0.3),
+            metrics=SpeakingMetrics(duration_sec=45.0, word_count=10, wpm=120.0, filler_count=0, long_pause_count=0, max_pause_sec=0.3),
         )
 
 

@@ -27,6 +27,7 @@ logger = logging.getLogger("speaking.service")
 
 TORONTO_TZ = ZoneInfo("America/Toronto")
 SPEAKING_CARD_TAG = "speaking"
+MIN_ANSWER_SEC = 30.0  # 이보다 짧은 녹음은 답변으로 인정하지 않는다 (잘못 눌렀을 때 질문이 넘어가지 않게)
 AUTO_CARD_TAG = "speaking::auto"
 # 자동 추가 하루 상한(종류별). 넘치는 후보는 DB에 남기고 카드로는 만들지 않는다.
 AUTO_ADD_DAILY_CAP = {"sentence": 10, "vocab": 10, "grammar": 2}
@@ -239,6 +240,27 @@ class SpeakingService:
         label = f"card_{card.card_id}_r2" if is_retry and prev_attempt else f"card_{card.card_id}"
         audio_path = self._save_audio_safe(audio_bytes, today_str, label, filename)
         tr = self.stt.transcribe(audio_bytes, filename=filename, language="en")
+        if tr.metrics.duration_sec < MIN_ANSWER_SEC:
+            if audio_path:
+                try:
+                    Path(audio_path).unlink()
+                except OSError:
+                    pass
+            return {
+                "mode": "queue",
+                "status": "too_short",
+                "date": today_str,
+                "card_id": card.card_id,
+                "recommended_ease": None,
+                "show_rating_buttons": False,
+                "counts": counts.model_dump(),
+                "message": (
+                    f"녹음이 {tr.metrics.duration_sec:.0f}초라 답변으로 인정되지 않았습니다 (최소 {MIN_ANSWER_SEC:.0f}초). "
+                    "같은 질문에 다시 녹음해 보내세요."
+                ),
+                "audio_bytes": None,
+                "candidates": [],
+            }
 
         delta_line = ""
         if is_retry and prev_attempt:
@@ -333,7 +355,9 @@ class SpeakingService:
     def rate_current_card(self, card_id: int, ease: int) -> Dict[str, Any]:
         today_str = self.today_fn().isoformat()
         attempt = self.store.get_latest_attempt_for_card_today(today_str, card_id)
-        if attempt and attempt.get("ease") is not None:
+        if not attempt or (attempt.get("metrics") or {}).get("duration_sec", 0.0) < MIN_ANSWER_SEC:
+            return self._not_answered_response(today_str, card_id)
+        if attempt.get("ease") is not None:
             # 더블 탭이나 지난 메시지의 버튼: 같은 답변을 Anki에 두 번 기록하지 않는다.
             return {
                 "mode": "queue",
@@ -405,8 +429,24 @@ class SpeakingService:
             "candidates": [],
         }
 
+    def _not_answered_response(self, today_str: str, card_id: Optional[int]) -> Dict[str, Any]:
+        return {
+            "mode": "queue",
+            "status": "not_answered",
+            "date": today_str,
+            "card_id": card_id,
+            "recommended_ease": None,
+            "show_rating_buttons": False,
+            "message": (
+                f"이 질문에 아직 {MIN_ANSWER_SEC:.0f}초 이상 답하지 않았습니다. "
+                "답변을 녹음하거나, 건너뛰려면 /skip 을 사용하세요."
+            ),
+            "audio_bytes": None,
+            "candidates": [],
+        }
+
     def next_question(self) -> Dict[str, Any]:
-        """/next: 지금 질문에 답했으면 완료 처리하고, 아니면 건너뛰고, 다음 질문을 낸다."""
+        """/next: 지금 질문에 (30초 이상) 답했으면 완료 처리하고 다음 질문을 낸다. 답하지 않았으면 넘어가지 않는다."""
         today_str = self.today_fn().isoformat()
         q = self.store.get_daily_queue(today_str)
         active = q.get("active_card_id") if q else None
@@ -415,7 +455,7 @@ class SpeakingService:
         attempt = self.store.get_latest_attempt_for_card_today(today_str, active)
         if attempt and attempt.get("ease") is None:
             return self.rate_current_card(int(active), 3)
-        return self.skip_current_card()
+        return self._not_answered_response(today_str, int(active))
 
     def skip_current_card(self) -> Dict[str, Any]:
         today_str = self.today_fn().isoformat()

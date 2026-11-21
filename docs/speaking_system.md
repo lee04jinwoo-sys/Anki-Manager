@@ -6,6 +6,7 @@
 - **질문**: `speaking/question_bank.py`의 72개(일상 카테고리 54개 먼저, 기술·발표 18개 뒤). 질문 하나씩만 보여 준다.
 - **진행 상태**: `data/speaking.db`의 `question_progress`(open/done). 한 바퀴를 다 돌면 처음부터 다시 시작한다. 큐 구현은 `speaking/db_deck.py`.
 - **Anki Speaking 덱은 쓰지 않는다.** 예전 FSRS 방식(72장 시딩, Again/Hard/Good/Easy)은 폐기했다. 스피킹에는 간격반복이 맞지 않고, 외울 가치가 있는 것은 질문이 아니라 내가 틀린 문장과 표현이기 때문이다.
+- **30초 규칙**: 질문 답변은 30초 이상이어야 한다(`MIN_ANSWER_SEC`). 더 짧으면 채점·저장·카드 추가 없이 "다시 녹음" 안내만 보내고 질문은 그대로 둔다. `다음 질문`·`/next`도 30초 이상 답한 기록이 있어야 넘어간다(건너뛰려면 `/skip`). `/debrief`에는 적용하지 않는다.
 - **하루 완료**: 그날 평가(다음 질문으로 넘어감)된 답변이 1개 이상이면 스트릭에 반영된다.
 - **전용 봇**: `integrations/speaking_bot.py` (`SPEAKING_BOT_TOKEN`). `@ankimanager_bot`(`telegram_intake.py`)은 카드 입력 전용.
 
@@ -30,7 +31,7 @@ Telegram (스피킹 봇)
 | 명령 | 동작 |
 | --- | --- |
 | `/today` | 오늘 질문 받기·이어하기 |
-| `/next` (`/more`) | 다음 질문. 더 하고 싶을 때 |
+| `/next` (`/more`) | 다음 질문. 30초 이상 답한 뒤에만 넘어감 |
 | `/skip` | 이 질문을 건너뛰고 다른 질문 |
 | `/last` | 최근 답변의 문장별 교정 |
 | `/summary` | 오늘 요약, 아직 추가 안 한 후보 |

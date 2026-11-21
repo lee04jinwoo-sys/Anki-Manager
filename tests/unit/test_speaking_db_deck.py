@@ -34,25 +34,43 @@ def test_unanswered_open_question_stays_first_and_bank_restarts_after_full_round
     assert cards[0].prompt_text == "Question 1?"
 
 
-def test_next_question_marks_answered_done_and_skips_unanswered(tmp_path):
+def _attempt(store, card_id, duration):
+    from speaking.models import SpeakingMetrics
+
+    return store.save_card_attempt(
+        session_date="2026-11-19", card_id=card_id, note_id=card_id, topic_id=f"daily_{card_id:03d}",
+        prompt_text=f"Question {card_id}?", attempt_num=1, mode="card", transcript="t", audio_path=None,
+        metrics=SpeakingMetrics(duration_sec=duration), feedback={}, score=7.0,
+    )
+
+
+def test_next_requires_a_valid_answer_and_advances_after_one(tmp_path):
     store = SpeakingStore(tmp_path / "s.db")
     svc = SpeakingService(store=store, queue=DbQuestionDeck(store, QS), today_fn=lambda: dt.date(2026, 11, 19))
 
-    first = svc.start_or_resume_today()
-    assert first["message"] == "Question 1?"
+    assert svc.start_or_resume_today()["message"] == "Question 1?"
 
-    skipped = svc.next_question()  # 답 없이 /next -> 건너뛰기
-    assert skipped["message"] == "Question 2?" or "Question 2?" in skipped["message"]
-    assert svc.store.question_statuses().get("daily_001") == "open"  # 건너뛴 질문은 닫히지 않음
+    blocked = svc.next_question()  # 답 없이 /next -> 넘어가지 않음
+    assert blocked["status"] == "not_answered"
+    assert svc.start_or_resume_today()["message"] == "Question 1?"
 
-    store.save_card_attempt(
-        session_date="2026-11-19", card_id=2, note_id=2, topic_id="daily_002", prompt_text="Question 2?",
-        attempt_num=1, mode="card", transcript="t", audio_path=None,
-        metrics=__import__("speaking.models", fromlist=["SpeakingMetrics"]).SpeakingMetrics(),
-        feedback={}, score=7.0,
-    )
-    nxt = svc.next_question()  # 답한 뒤 /next -> 완료 처리 후 다음 질문
-    assert store.question_statuses().get("daily_002") == "done"
+    _attempt(store, 1, 12.0)  # 30초 미만 기록이 남아 있어도 넘어가지 않음
+    assert svc.next_question()["status"] == "not_answered"
+    assert svc.rate_current_card(1, 3)["status"] == "not_answered"
+    assert store.question_statuses().get("daily_001") == "open"
+
+    _attempt(store, 1, 40.0)
+    nxt = svc.next_question()
+    assert store.question_statuses().get("daily_001") == "done"
     assert nxt["status"] == "next_card"
+    assert nxt["message"] == "Question 2?"
     assert store.count_rated_today("2026-11-19") == 1
     assert store.compute_streaks(today=dt.date(2026, 11, 19))["current"] == 1
+
+
+def test_skip_swaps_question_without_closing_it(tmp_path):
+    store = SpeakingStore(tmp_path / "s.db")
+    svc = SpeakingService(store=store, queue=DbQuestionDeck(store, QS), today_fn=lambda: dt.date(2026, 11, 19))
+    svc.start_or_resume_today()
+    assert "Question 2?" in svc.skip_current_card()["message"]
+    assert store.question_statuses().get("daily_001") == "open"
