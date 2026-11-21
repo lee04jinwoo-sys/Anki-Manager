@@ -212,3 +212,25 @@ def test_back_log_failure_does_not_block_anki_rating(tmp_path):
 
     assert out["status"] == "day_completed"
     assert deck.answered == [(101, 3)]
+
+
+def test_duplicate_rating_is_ignored(tmp_path):
+    store = SpeakingStore(tmp_path / "speaking.db")
+    cards = [SpeakingCard(card_id=101, note_id=501, topic_id="daily_001", prompt_text="Q1", is_new=True)]
+    deck = FakeAnkiDeck(cards)
+    svc = SpeakingService(
+        store=store,
+        anki_deck=deck,
+        stt=FakeSTT(),
+        coach=FakeCoach(),
+        tts_fn=lambda text: None,
+        audio_dir=tmp_path / "audio",
+        today_fn=lambda: dt.date(2026, 11, 19),
+    )
+    svc.start_or_resume_today()
+    svc.submit_voice(b"RAW")
+    svc.rate_current_card(101, 3)
+    again = svc.rate_current_card(101, 3)
+
+    assert again["status"] == "already_rated"
+    assert deck.answered == [(101, 3)]

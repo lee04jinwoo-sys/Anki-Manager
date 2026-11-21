@@ -342,9 +342,23 @@ class SpeakingService:
 
     def rate_current_card(self, card_id: int, ease: int) -> Dict[str, Any]:
         today_str = self.today_fn().isoformat()
+        attempt = self.store.get_latest_attempt_for_card_today(today_str, card_id)
+        if attempt and attempt.get("ease") is not None:
+            # 더블 탭이나 지난 메시지의 버튼: 같은 답변을 Anki에 두 번 기록하지 않는다.
+            return {
+                "mode": "queue",
+                "status": "already_rated",
+                "date": today_str,
+                "card_id": card_id,
+                "recommended_ease": None,
+                "show_rating_buttons": False,
+                "message": "이미 평가한 카드입니다. /today로 다음 카드를 이어가세요.",
+                "audio_bytes": None,
+                "candidates": [],
+            }
+
         self.anki_deck.answer_speaking_card(card_id, ease)
 
-        attempt = self.store.get_latest_attempt_for_card_today(today_str, card_id)
         if attempt:
             self.store.mark_attempt_rated(attempt["id"], ease)
             note_id = attempt.get("note_id")

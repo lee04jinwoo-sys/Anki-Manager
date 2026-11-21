@@ -43,6 +43,11 @@ class BackendError(Exception):
     pass
 
 
+def _safe_error(e):
+    """백엔드 오류 문구는 그대로, 그 외(requests 등)는 URL에 봇 토큰이 섞일 수 있어 타입만 노출한다."""
+    return str(e) if isinstance(e, BackendError) else type(e).__name__
+
+
 def _build_evaluation_markup(card_id, recommended_ease):
     rate_row = []
     for ease, label in _EASE_BUTTONS:
@@ -189,7 +194,7 @@ def process_updates(
                 logger.warning("콜백 처리 오류: %s", type(e).__name__)
                 chat_id = ((cb.get("message") or {}).get("chat") or {}).get("id")
                 if chat_id == allowed_chat_id:
-                    _call_send(send, chat_id, f"버튼 처리 오류: {e}")
+                    _call_send(send, chat_id, f"버튼 처리 오류: {_safe_error(e)}")
             continue
 
         msg = upd.get("message") or {}
@@ -203,7 +208,7 @@ def process_updates(
                 _handle_voice(voice_obj, chat_id, backend, send, download_file, send_voice)
             except Exception as e:
                 logger.warning("음성 처리 오류: %s", type(e).__name__)
-                _call_send(send, chat_id, f"음성 처리 오류: {e}")
+                _call_send(send, chat_id, f"음성 처리 오류: {_safe_error(e)}")
             continue
 
         text = msg.get("text")
@@ -212,7 +217,7 @@ def process_updates(
                 _handle_command(text, chat_id, backend, send)
             except Exception as e:
                 logger.warning("명령 처리 오류: %s", type(e).__name__)
-                _call_send(send, chat_id, f"요청 처리 오류: {e}")
+                _call_send(send, chat_id, f"요청 처리 오류: {_safe_error(e)}")
     return offset
 
 
@@ -281,7 +286,13 @@ def run(token, allowed_chat_id):
                 },
                 timeout=_POLL_TIMEOUT_SEC + 10,
             )
-            updates = r.json().get("result", [])
+            body = r.json()
+            if not body.get("ok"):
+                # 409(봇 인스턴스 중복)·401 등은 즉시 반환되므로 쉬지 않으면 API를 계속 두드린다.
+                logger.warning("getUpdates 거부: %s %s", r.status_code, body.get("description", ""))
+                time.sleep(5)
+                continue
+            updates = body.get("result", [])
         except Exception as e:
             logger.warning("getUpdates 실패: %s", type(e).__name__)
             time.sleep(5)

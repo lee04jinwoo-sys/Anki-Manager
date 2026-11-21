@@ -141,3 +141,12 @@ def test_unauthorized_chat_ignored_and_errors_isolated():
     assert offset == 22
     assert len(backend.calls) == 1
     assert len(sent) == 1 and "오류" in sent[0][1]
+
+
+def test_error_text_hides_non_backend_exception_details():
+    class Boom(Exception):
+        pass
+
+    secret = "https://api.telegram.org/file/bot123:SECRET/voice.ogg"
+    assert sb._safe_error(Boom(secret)) == "Boom"
+    assert sb._safe_error(sb.BackendError("백엔드 연결 실패")) == "백엔드 연결 실패"

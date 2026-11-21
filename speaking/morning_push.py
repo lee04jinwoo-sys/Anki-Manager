@@ -24,13 +24,29 @@ def push_morning_queue(
         except Exception as e:
             logger.warning("아침 푸시 전 Anki 동기화 경고: %s", e)
 
-    resp = post(f"{backend_url}/api/speaking/queue/start", json={}, timeout=60)
-    resp.raise_for_status()
-    data = resp.json()
+    tg_url = f"https://api.telegram.org/bot{token}/sendMessage"
+    try:
+        resp = post(f"{backend_url}/api/speaking/queue/start", json={}, timeout=60)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        logger.error("아침 큐 로드 실패: %s", type(e).__name__)
+        try:
+            post(
+                tg_url,
+                json={
+                    "chat_id": chat_id,
+                    "text": f"⚠️ 오늘 스피킹 큐를 불러오지 못했습니다 ({type(e).__name__}). 서버나 Mac Anki 연결을 확인하세요.",
+                },
+                timeout=30,
+            )
+        except Exception:
+            logger.error("실패 알림 전송도 실패")
+        raise
 
     msg = data.get("message") or "오늘 스피킹 큐 확인 완료"
     r = post(
-        f"https://api.telegram.org/bot{token}/sendMessage",
+        tg_url,
         json={"chat_id": chat_id, "text": f"☀️ 09:00 영어 스피킹 큐\n\n{msg}"},
         timeout=30,
     )
