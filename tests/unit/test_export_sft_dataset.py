@@ -42,27 +42,45 @@ def test_vocab_quality_accepts_rule_conforming_card():
     assert ex.vocab_quality(ex.note_fields(vocab_note())) == (True, "ok")
 
 
-def test_vocab_quality_rejects_slash_in_meaning():
-    ok, reason = ex.vocab_quality(ex.note_fields(vocab_note(뜻="찾다/두다")))
-    assert not ok and reason == "slash_in_meaning"
+def test_vocab_example_carries_normalized_meaning_and_pos():
+    example = ex.build_example(vocab_note(note_id=11, 뜻="찾다/두다", 품사="v phr"))
+    answer = json.loads(example["messages"][2]["content"])
+    current = example["meta"]["current"]
+    assert answer.get("뜻", current.get("뜻")) == "찾다, 두다"
+    assert answer["품사"] == "idiom"
 
 
-def test_vocab_quality_rejects_nonstandard_pos():
-    ok, reason = ex.vocab_quality(ex.note_fields(vocab_note(품사="v phr")))
+def vocab_fields(**over):
+    return ex.normalize_fields("English Vocabulary", ex.note_fields(vocab_note(**over)))
+
+
+def test_normalize_turns_slash_in_meaning_into_comma():
+    assert vocab_fields(뜻="제시하다/설명하다")["뜻"] == "제시하다, 설명하다"
+    assert vocab_fields(뜻="운동하다 / 잘 풀리다")["뜻"] == "운동하다, 잘 풀리다"
+
+
+def test_normalize_maps_phrase_pos_to_idiom():
+    assert vocab_fields(품사="v phr")["품사"] == "idiom"
+    assert vocab_fields(품사="n phr")["품사"] == "idiom"
+
+
+def test_vocab_quality_accepts_preposition_and_compound_pos():
+    assert ex.vocab_quality(vocab_fields(품사="prep"))[0]
+    assert ex.vocab_quality(vocab_fields(품사="n, v"))[0]
+
+
+def test_vocab_quality_rejects_unknown_pos():
+    ok, reason = ex.vocab_quality(vocab_fields(품사="det"))
     assert not ok and reason == "bad_pos"
 
 
-def test_vocab_quality_accepts_compound_pos():
-    assert ex.vocab_quality(ex.note_fields(vocab_note(품사="n, v")))[0]
-
-
-def test_vocab_quality_rejects_explanation_without_collocation_step():
-    ok, reason = ex.vocab_quality(ex.note_fields(vocab_note(설명="locate는 '찾다'라는 의미로, 위치를 나타냅니다.")))
-    assert not ok and reason == "explain_format"
+def test_vocab_quality_accepts_explanation_in_other_wording():
+    for text in ["‘해석하다’라는 뜻으로, 숨겨진 의미를 파악하는 것을 의미합니다.", "월요일. 한 주의 첫 번째 날입니다."]:
+        assert ex.vocab_quality(vocab_fields(설명=text))[0]
 
 
 def test_vocab_quality_rejects_missing_example():
-    ok, reason = ex.vocab_quality(ex.note_fields(vocab_note(예문="")))
+    ok, reason = ex.vocab_quality(vocab_fields(예문=""))
     assert not ok and reason == "missing_field"
 
 
@@ -71,12 +89,27 @@ def test_sentence_quality_rejects_meta_translation():
     assert not ok and reason == "meta_translation"
 
 
+def test_sentence_quality_keeps_translation_of_a_sentence_about_meaning():
+    f = ex.note_fields(sentence_note(문장="Respect literally means to look again.",
+                                     해설="존중(Respect)은 문자 그대로 '다시 본다'는 의미입니다."))
+    assert ex.sentence_quality(f)[0]
+
+
 def test_sentence_quality_rejects_leftover_placeholder():
     ok, reason = ex.sentence_quality(ex.note_fields(sentence_note(문장="I want to prevent A from leaving.")))
     assert not ok and reason == "placeholder"
 
 
-def test_sentence_quality_rejects_fragment():
+def test_sentence_quality_keeps_article_a_at_sentence_start():
+    for s in ["A bird flew in through the window.", "Watch out! A car’s coming.", "A piece of cake."]:
+        assert ex.sentence_quality(ex.note_fields(sentence_note(문장=s)))[0], s
+
+
+def test_sentence_quality_keeps_two_word_expressions():
+    assert ex.sentence_quality(ex.note_fields(sentence_note(문장="Take care.")))[0]
+
+
+def test_sentence_quality_rejects_single_word():
     ok, reason = ex.sentence_quality(ex.note_fields(sentence_note(문장="Healthy.")))
     assert not ok and reason == "too_short"
 
@@ -130,14 +163,20 @@ def test_grammar_example_gives_sentence_and_answer_and_asks_for_rest():
 
 
 def test_build_example_returns_none_for_rejected_or_unknown_notes():
-    assert ex.build_example(vocab_note(뜻="a/b")) is None
+    assert ex.build_example(vocab_note(예문="")) is None
     assert ex.build_example({"noteId": 9, "modelName": "Basic", "fields": {}}) is None
 
 
 def test_export_drops_duplicate_main_field_and_counts_reasons():
-    notes = [vocab_note(note_id=1), vocab_note(note_id=2, 단어="<b>Locate</b>"), vocab_note(note_id=3, 뜻="a/b")]
+    notes = [vocab_note(note_id=1), vocab_note(note_id=2, 단어="<b>Locate</b>"), vocab_note(note_id=3, 예문="")]
     examples, stats = ex.export_examples(notes)
     assert [e["meta"]["note_id"] for e in examples] == [1]
     assert stats["English Vocabulary"]["duplicate"] == 1
-    assert stats["English Vocabulary"]["slash_in_meaning"] == 1
+    assert stats["English Vocabulary"]["missing_field"] == 1
     assert stats["English Vocabulary"]["ok"] == 1
+
+
+def test_export_lists_rejected_note_ids_for_manual_fix():
+    examples, stats = ex.export_examples([grammar_note(note_id=7, 보기3="has been discussing")])
+    assert examples == []
+    assert stats["rejected"] == [{"note_id": 7, "model": "English Grammar", "reason": "duplicate_choices"}]
