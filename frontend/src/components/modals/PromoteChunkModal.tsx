@@ -146,25 +146,25 @@ export const PromoteChunkModal: React.FC<PromoteChunkModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-      <div className="relative w-full max-w-2xl bg-neutral-900 border border-neutral-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="relative w-full max-w-2xl bg-apple-card border border-apple-borderStrong rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-800 bg-neutral-950/40">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-apple-border bg-apple-bg/40">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-amber-500/10 text-amber-400 rounded-xl border border-amber-500/20">
+            <div className="p-2 bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-xl border border-amber-500/20">
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-semibold text-white">
+              <h3 className="text-base font-semibold text-apple-text">
                 고빈도 청크 승격 (Upgrade to Chunk)
               </h3>
-              <p className="text-xs text-neutral-400">
+              <p className="text-xs text-apple-secondary">
                 고립된 단어를 전치사/목적어가 결합된 실전 관용 청크로 재정의하여 오답 간섭을 원천 차단합니다.
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-neutral-400 hover:text-white rounded-lg hover:bg-neutral-800 transition-colors"
+            className="p-1.5 text-apple-secondary hover:text-apple-text rounded-lg hover:bg-apple-subtleHover transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -173,24 +173,24 @@ export const PromoteChunkModal: React.FC<PromoteChunkModalProps> = ({
         {/* Content Body */}
         <div className="flex-1 overflow-y-auto p-6 space-y-5">
           {/* Target Word Info Banner */}
-          <div className="flex items-center justify-between p-3.5 bg-neutral-800/60 border border-neutral-700/60 rounded-xl">
+          <div className="flex items-center justify-between p-3.5 bg-apple-subtle border border-apple-borderStrong rounded-xl">
             <div className="flex items-center gap-3">
-              <span className="text-lg font-bold text-white tracking-wide">
+              <span className="text-lg font-bold text-apple-text tracking-wide">
                 {targetItem.word}
               </span>
-              <span className="text-sm text-neutral-400">
+              <span className="text-sm text-apple-secondary">
                 {targetItem.meaning}
               </span>
             </div>
             <div className="flex items-center gap-2">
               {targetItem.lapses !== undefined && targetItem.lapses > 0 && (
-                <span className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-rose-300 bg-rose-500/15 border border-rose-500/30 rounded-lg">
+                <span className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-rose-600 dark:text-rose-300 bg-rose-500/15 border border-rose-500/30 rounded-lg">
                   <Flame className="w-3.5 h-3.5" />
                   누적 오답 {targetItem.lapses}회
                 </span>
               )}
               {collocations && (
-                <span className="px-2 py-1 text-xs font-medium text-neutral-300 bg-neutral-700/50 rounded-lg">
+                <span className="px-2 py-1 text-xs font-medium text-apple-text/80 bg-apple-subtleHover rounded-lg">
                   Rank #{collocations.original_rank.toLocaleString()}
                 </span>
               )}
@@ -200,22 +200,22 @@ export const PromoteChunkModal: React.FC<PromoteChunkModalProps> = ({
           {/* Loader or Error */}
           {isLoading && (
             <div className="flex flex-col items-center justify-center py-10 space-y-3">
-              <Loader2 className="w-8 h-8 text-amber-400 animate-spin" />
-              <p className="text-sm text-neutral-400">
+              <Loader2 className="w-8 h-8 text-amber-600 dark:text-amber-400 animate-spin" />
+              <p className="text-sm text-apple-secondary">
                 구글 코퍼스 및 AI 기반 고빈도 연어 후보를 탐색하고 있습니다...
               </p>
             </div>
           )}
 
           {error && (
-            <div className="flex items-center gap-2.5 p-3.5 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-300 text-sm">
+            <div className="flex items-center gap-2.5 p-3.5 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-600 dark:text-rose-300 text-sm">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{error}</span>
             </div>
           )}
 
           {successMsg && (
-            <div className="flex items-center gap-2.5 p-3.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-300 text-sm">
+            <div className="flex items-center gap-2.5 p-3.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-700 dark:text-emerald-300 text-sm">
               <CheckCircle2 className="w-4 h-4 shrink-0" />
               <span>{successMsg}</span>
             </div>
@@ -225,14 +225,14 @@ export const PromoteChunkModal: React.FC<PromoteChunkModalProps> = ({
           {!isLoading && collocations && collocations.candidates.length > 0 && (
             <div>
               <div className="mb-2 flex items-center justify-between gap-2">
-                <label className="block text-xs font-medium text-neutral-400">
+                <label className="block text-xs font-medium text-apple-secondary">
                   추천된 고빈도 연어 / 청크 후보 (클릭하여 선택)
-                  {collocations.cached && <span className="ml-2 text-neutral-500">· 저장된 후보</span>}
+                  {collocations.cached && <span className="ml-2 text-apple-secondary/80">· 저장된 후보</span>}
                 </label>
                 <button
                   type="button"
                   onClick={() => loadCollocations(true)}
-                  className="rounded-md border border-neutral-700 px-2 py-0.5 text-[11px] text-neutral-400 hover:bg-neutral-800"
+                  className="rounded-md border border-apple-borderStrong px-2 py-0.5 text-[11px] text-apple-secondary hover:bg-apple-subtleHover"
                   title="저장된 후보를 무시하고 새로 생성 (Gemini 호출)"
                 >
                   다시 생성
@@ -248,26 +248,26 @@ export const PromoteChunkModal: React.FC<PromoteChunkModalProps> = ({
                       className={`cursor-pointer p-3.5 rounded-xl border transition-all ${
                         isSelected
                           ? 'bg-amber-500/10 border-amber-500/50 ring-1 ring-amber-500/30'
-                          : 'bg-neutral-800/40 border-neutral-700/50 hover:bg-neutral-800 hover:border-neutral-600'
+                          : 'bg-apple-subtle/60 border-apple-borderStrong hover:bg-apple-subtleHover hover:border-apple-borderStrong'
                       }`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <span className="font-semibold text-sm text-amber-300">
+                          <span className="font-semibold text-sm text-amber-700 dark:text-amber-300">
                             {cand.chunk}
                           </span>
-                          <span className="px-1.5 py-0.5 text-[11px] font-bold rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                          <span className="px-1.5 py-0.5 text-[11px] font-bold rounded bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30">
                             [{cand.pos || 'v'}]
                           </span>
-                          <span className="text-xs text-neutral-400">
+                          <span className="text-xs text-apple-secondary">
                             • {cand.meaning}
                           </span>
                         </div>
-                        <span className="text-xs px-2 py-0.5 rounded-md font-medium bg-neutral-700/60 text-neutral-300 border border-neutral-600/50">
+                        <span className="text-xs px-2 py-0.5 rounded-md font-medium bg-apple-subtleHover text-apple-text/80 border border-apple-borderStrong">
                           {cand.tier.replace('freq::', '')}
                         </span>
                       </div>
-                      <p className="mt-1.5 text-xs text-neutral-400 line-clamp-1">
+                      <p className="mt-1.5 text-xs text-apple-secondary line-clamp-1">
                         예문: {cand.example_1}
                       </p>
                     </div>
@@ -279,35 +279,35 @@ export const PromoteChunkModal: React.FC<PromoteChunkModalProps> = ({
 
           {/* Form Fields for Selected Chunk */}
           {!isLoading && collocations && collocations.candidates.length > 0 && (
-            <div className="space-y-3.5 pt-2 border-t border-neutral-800">
+            <div className="space-y-3.5 pt-2 border-t border-apple-border">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-neutral-400 mb-1">
+                  <label className="block text-xs font-medium text-apple-secondary mb-1">
                     새 단어/청크 (표제어)
                   </label>
                   <input
                     type="text"
                     value={selectedChunk}
                     onChange={(e) => setSelectedChunk(e.target.value)}
-                    className="w-full px-3 py-2 text-sm bg-neutral-950 border border-neutral-700 rounded-lg text-white focus:outline-none focus:border-amber-500"
+                    className="w-full px-3 py-2 text-sm bg-apple-bg border border-apple-borderStrong rounded-lg text-apple-text focus:outline-none focus:border-amber-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-neutral-400 mb-1">
+                  <label className="block text-xs font-medium text-apple-secondary mb-1">
                     새 한국어 뜻
                   </label>
                   <input
                     type="text"
                     value={selectedMeaning}
                     onChange={(e) => setSelectedMeaning(e.target.value)}
-                    className="w-full px-3 py-2 text-sm bg-neutral-950 border border-neutral-700 rounded-lg text-white focus:outline-none focus:border-amber-500"
+                    className="w-full px-3 py-2 text-sm bg-apple-bg border border-apple-borderStrong rounded-lg text-apple-text focus:outline-none focus:border-amber-500"
                   />
                 </div>
               </div>
 
               {/* Functional POS Selector */}
               <div>
-                <label className="block text-xs font-medium text-neutral-400 mb-1.5">
+                <label className="block text-xs font-medium text-apple-secondary mb-1.5">
                   기능 품사 (Functional POS)
                 </label>
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -328,7 +328,7 @@ export const PromoteChunkModal: React.FC<PromoteChunkModalProps> = ({
                         className={`px-2.5 py-1 text-xs font-medium rounded-lg border transition-all ${
                           isSelected
                             ? 'bg-amber-400 text-black border-amber-300 font-bold shadow-sm'
-                            : 'bg-neutral-800/80 text-neutral-300 border-neutral-700 hover:bg-neutral-700'
+                            : 'bg-apple-subtle text-apple-text/80 border-apple-borderStrong hover:bg-apple-subtleHover'
                         }`}
                       >
                         {p.label}
@@ -339,9 +339,9 @@ export const PromoteChunkModal: React.FC<PromoteChunkModalProps> = ({
               </div>
 
               {/* Examples */}
-              <div className="p-3 bg-neutral-950/60 rounded-xl border border-neutral-800 space-y-2.5">
+              <div className="p-3 bg-apple-bg/60 rounded-xl border border-apple-border space-y-2.5">
                 <div>
-                  <label className="block text-xs font-medium text-neutral-400 mb-1">
+                  <label className="block text-xs font-medium text-apple-secondary mb-1">
                     예문 1 (영문 & 해석)
                   </label>
                   <input
@@ -349,19 +349,19 @@ export const PromoteChunkModal: React.FC<PromoteChunkModalProps> = ({
                     value={example1}
                     onChange={(e) => setExample1(e.target.value)}
                     placeholder="Example sentence 1"
-                    className="w-full px-2.5 py-1.5 text-xs bg-neutral-900 border border-neutral-700 rounded-md text-white mb-1 focus:outline-none focus:border-amber-500"
+                    className="w-full px-2.5 py-1.5 text-xs bg-apple-card border border-apple-borderStrong rounded-md text-apple-text mb-1 focus:outline-none focus:border-amber-500"
                   />
                   <input
                     type="text"
                     value={trans1}
                     onChange={(e) => setTrans1(e.target.value)}
                     placeholder="한국어 해석 1"
-                    className="w-full px-2.5 py-1.5 text-xs bg-neutral-900 border border-neutral-750 rounded-md text-neutral-300 focus:outline-none focus:border-amber-500"
+                    className="w-full px-2.5 py-1.5 text-xs bg-apple-card border border-apple-border rounded-md text-apple-text/80 focus:outline-none focus:border-amber-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-neutral-400 mb-1">
+                  <label className="block text-xs font-medium text-apple-secondary mb-1">
                     예문 2 (영문 & 해석)
                   </label>
                   <input
@@ -369,26 +369,26 @@ export const PromoteChunkModal: React.FC<PromoteChunkModalProps> = ({
                     value={example2}
                     onChange={(e) => setExample2(e.target.value)}
                     placeholder="Example sentence 2"
-                    className="w-full px-2.5 py-1.5 text-xs bg-neutral-900 border border-neutral-700 rounded-md text-white mb-1 focus:outline-none focus:border-amber-500"
+                    className="w-full px-2.5 py-1.5 text-xs bg-apple-card border border-apple-borderStrong rounded-md text-apple-text mb-1 focus:outline-none focus:border-amber-500"
                   />
                   <input
                     type="text"
                     value={trans2}
                     onChange={(e) => setTrans2(e.target.value)}
                     placeholder="한국어 해석 2"
-                    className="w-full px-2.5 py-1.5 text-xs bg-neutral-900 border border-neutral-750 rounded-md text-neutral-300 focus:outline-none focus:border-amber-500"
+                    className="w-full px-2.5 py-1.5 text-xs bg-apple-card border border-apple-border rounded-md text-apple-text/80 focus:outline-none focus:border-amber-500"
                   />
                 </div>
               </div>
 
               {/* Checkboxes */}
-              <div className="flex flex-col gap-2 pt-1 text-xs text-neutral-300">
+              <div className="flex flex-col gap-2 pt-1 text-xs text-apple-text/80">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={addSentences}
                     onChange={(e) => setAddSentences(e.target.checked)}
-                    className="w-4 h-4 rounded border-neutral-700 text-amber-500 focus:ring-0 bg-neutral-900"
+                    className="w-4 h-4 rounded border-apple-borderStrong text-amber-500 focus:ring-0 bg-apple-card"
                   />
                   <span>
                     문장 덱(Sentence)에 위 예문 2개를 <strong>Google Chirp3-HD 최고음질 오디오</strong>와 함께 자동 적재
@@ -399,7 +399,7 @@ export const PromoteChunkModal: React.FC<PromoteChunkModalProps> = ({
                     type="checkbox"
                     checked={resetToNew}
                     onChange={(e) => setResetToNew(e.target.checked)}
-                    className="w-4 h-4 rounded border-neutral-700 text-amber-500 focus:ring-0 bg-neutral-900"
+                    className="w-4 h-4 rounded border-apple-borderStrong text-amber-500 focus:ring-0 bg-apple-card"
                   />
                   <span>
                     이 카드를 <strong>완전 새 카드(New Card)</strong>로 리셋하고 Ease Factor를 <strong>250%</strong>로 복원 (과거 오답 0회 리셋)
@@ -411,11 +411,11 @@ export const PromoteChunkModal: React.FC<PromoteChunkModalProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-neutral-800 bg-neutral-950/40">
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-apple-border bg-apple-bg/40">
           <button
             onClick={onClose}
             disabled={isPromoting}
-            className="px-4 py-2 text-sm font-medium text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-xl transition-colors"
+            className="px-4 py-2 text-sm font-medium text-apple-secondary hover:text-apple-text hover:bg-apple-subtleHover rounded-xl transition-colors"
           >
             취소
           </button>

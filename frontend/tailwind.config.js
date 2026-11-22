@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  darkMode: 'media', // dark: variants follow the system setting, like the apple-* variables
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
@@ -35,21 +36,23 @@ export default {
           "monospace",
         ],
       },
+      // Every apple-* color is a CSS variable (RGB triplet) set per color scheme in src/index.css,
+      // so the whole UI follows the system light/dark setting.
       colors: {
         apple: {
-          bg: "#121214",           // Deep dark charcoal background
-          card: "#1c1c1e",         // macOS window/card surface
-          subtle: "#242426",       // Inner sub-containers
-          subtleHover: "#2c2c2e",  // Interactive hover
-          border: "#2c2c2e",       // Subtle border
-          borderStrong: "#38383a", // Emphasized border
-          text: "#f5f5f7",         // Soft white
-          secondary: "#8e8e93",    // Apple system gray
-          blue: "#0a84ff",         // Apple Dark System Blue
-          blueHover: "#409cff",
-          green: "#30d158",        // Apple Dark System Green
-          orange: "#ff9f0a",       // Apple Dark System Orange
-          red: "#ff453a",          // Apple Dark System Red
+          bg: 'rgb(var(--apple-bg) / <alpha-value>)',
+          card: 'rgb(var(--apple-card) / <alpha-value>)',
+          subtle: 'rgb(var(--apple-subtle) / <alpha-value>)',
+          subtleHover: 'rgb(var(--apple-subtle-hover) / <alpha-value>)',
+          border: 'rgb(var(--apple-border) / <alpha-value>)',
+          borderStrong: 'rgb(var(--apple-border-strong) / <alpha-value>)',
+          text: 'rgb(var(--apple-text) / <alpha-value>)',
+          secondary: 'rgb(var(--apple-secondary) / <alpha-value>)',
+          blue: 'rgb(var(--apple-blue) / <alpha-value>)',
+          blueHover: 'rgb(var(--apple-blue-hover) / <alpha-value>)',
+          green: 'rgb(var(--apple-green) / <alpha-value>)',
+          orange: 'rgb(var(--apple-orange) / <alpha-value>)',
+          red: 'rgb(var(--apple-red) / <alpha-value>)',
         },
       },
       borderRadius: {
@@ -58,9 +61,9 @@ export default {
         'apple-lg': '16px',
       },
       boxShadow: {
-        'apple-subtle': '0 1px 3px rgba(0, 0, 0, 0.3)',
-        'apple-card': '0 4px 12px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.2)',
-        'apple-modal': '0 24px 48px rgba(0, 0, 0, 0.6), 0 0 1px rgba(255, 255, 255, 0.1)',
+        'apple-subtle': 'var(--apple-shadow-subtle)',
+        'apple-card': 'var(--apple-shadow-card)',
+        'apple-modal': 'var(--apple-shadow-modal)',
       },
     },
   },

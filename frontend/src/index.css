@@ -4,13 +4,13 @@
 
 @layer base {
   body {
-    background-color: #121214;
-    color: #f5f5f7;
+    background-color: rgb(var(--apple-bg));
+    color: rgb(var(--apple-text));
     font-family: -apple-system, BlinkMacSystemFont, "LXGW WenKai GB", "霞鹜文楷 GB", "SF Pro Text", "SF Pro Display", "Helvetica Neue", Inter, Arial, sans-serif;
   }
 }
 
-/* Custom dark scrollbar */
+/* Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -19,23 +19,83 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #2c2c2e;
+  background: var(--scrollbar-thumb);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3a3a3c;
+  background: var(--scrollbar-thumb-hover);
 }
 
-/* Data-viz tokens (dark surface #1c1c1e; validated with dataviz validate_palette.js) */
+/* Colors follow the system setting: light by default, dark under prefers-color-scheme: dark.
+   apple-* are RGB triplets for tailwind's <alpha-value>. Light text colors clear 4.5:1 on the light
+   surfaces; the dark values are the original dark design. */
 :root {
-  --viz-seq-1: #184f95; /* ordinal ramp, dim -> bright */
-  --viz-seq-2: #256abf;
-  --viz-seq-3: #3987e5;
-  --viz-seq-4: #86b6ef;
-  --viz-empty: #2a2a2d; /* no activity */
-  --viz-neutral: #5a5a5e; /* suspended / de-emphasis */
-  --viz-series-1: #3987e5; /* categorical slot 1 (dark) */
-  --viz-series-2: #d95926; /* categorical slot 2 (dark) */
-  --viz-grid: #2c2c2e;
-  --viz-surface: #1c1c1e;
+  color-scheme: light;
+  --apple-bg: 245 245 247;
+  --apple-card: 255 255 255;
+  --apple-subtle: 239 239 242;
+  --apple-subtle-hover: 229 229 234;
+  --apple-border: 227 227 232;
+  --apple-border-strong: 209 209 214;
+  --apple-text: 29 29 31;
+  --apple-secondary: 110 110 115;
+  --apple-blue: 0 102 204;
+  --apple-blue-hover: 0 85 170;
+  --apple-green: 29 122 54;
+  --apple-orange: 178 80 0;
+  --apple-red: 215 0 21;
+  --apple-shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --apple-shadow-card: 0 4px 12px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.05);
+  --apple-shadow-modal: 0 24px 48px rgba(0, 0, 0, 0.18), 0 0 1px rgba(0, 0, 0, 0.12);
+  --scrollbar-thumb: #d1d1d6;
+  --scrollbar-thumb-hover: #b7b7bd;
+
+  /* Data-viz tokens, light surface #ffffff (validated with dataviz validate_palette.js:
+     categorical light, ordinal ramp light->dark with --ordinal) */
+  --viz-seq-1: #86b6ef; /* ordinal ramp: low -> high reads light -> dark */
+  --viz-seq-2: #3987e5;
+  --viz-seq-3: #256abf;
+  --viz-seq-4: #184f95;
+  --viz-empty: #ececf0; /* no activity */
+  --viz-neutral: #a1a1a6; /* suspended / de-emphasis */
+  --viz-series-1: #2a78d6; /* categorical slot 1 (light) */
+  --viz-series-2: #eb6834; /* categorical slot 2 (light) */
+  --viz-grid: #e5e5ea;
+  --viz-surface: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --apple-bg: 18 18 20;
+    --apple-card: 28 28 30;
+    --apple-subtle: 36 36 38;
+    --apple-subtle-hover: 44 44 46;
+    --apple-border: 44 44 46;
+    --apple-border-strong: 56 56 58;
+    --apple-text: 245 245 247;
+    --apple-secondary: 142 142 147;
+    --apple-blue: 10 132 255;
+    --apple-blue-hover: 64 156 255;
+    --apple-green: 48 209 88;
+    --apple-orange: 255 159 10;
+    --apple-red: 255 69 58;
+    --apple-shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.3);
+    --apple-shadow-card: 0 4px 12px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.2);
+    --apple-shadow-modal: 0 24px 48px rgba(0, 0, 0, 0.6), 0 0 1px rgba(255, 255, 255, 0.1);
+    --scrollbar-thumb: #2c2c2e;
+    --scrollbar-thumb-hover: #3a3a3c;
+
+    /* Data-viz tokens, dark surface #1c1c1e (validated with dataviz validate_palette.js) */
+    --viz-seq-1: #184f95; /* ordinal ramp, dim -> bright */
+    --viz-seq-2: #256abf;
+    --viz-seq-3: #3987e5;
+    --viz-seq-4: #86b6ef;
+    --viz-empty: #2a2a2d;
+    --viz-neutral: #5a5a5e;
+    --viz-series-1: #3987e5;
+    --viz-series-2: #d95926;
+    --viz-grid: #2c2c2e;
+    --viz-surface: #1c1c1e;
+  }
 }
