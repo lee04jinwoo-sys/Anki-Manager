@@ -58,6 +58,15 @@ class GrammarCreateRequest(BaseModel):
     generate_audio: bool = True
     tags: List[str] = Field(default_factory=list)
 
+class KnowledgeCreateRequest(BaseModel):
+    """learning 저장소(study.py)가 보내는 지식 카드. 내용은 보내는 쪽이 정하고 보강하지 않는다."""
+    question: str                      # 질문 (앞면, 중복 판정 기준)
+    answer: str                        # 정답
+    explanation: Optional[str] = ""    # 설명 (왜 그런지, 흔한 실수)
+    topic: Optional[str] = ""          # 주제 (과목명)
+    source: Optional[str] = ""         # 출처 (자료명 p.N)
+    tags: List[str] = Field(default_factory=list)
+
 class CardResponse(BaseModel):
     success: bool
     note_id: Optional[int] = None

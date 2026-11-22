@@ -12,6 +12,7 @@ from typing import List, Dict, Any, Optional
 import gtts
 from config import (
     ANKI_URL, DECK_SENTENCE, MODEL_SENTENCE, DECK_VOCAB, MODEL_VOCAB, DECK_GRAMMAR, MODEL_GRAMMAR,
+    DECK_KNOWLEDGE, MODEL_KNOWLEDGE,
     AUDIO_ADDER_MAX_WORKERS, NOTE_TYPES_CONFIG
 )
 from integrations.anki_connect import AnkiConnector
@@ -20,7 +21,7 @@ from core.completer import NoteCompleter, normalize_vocab_placeholders
 from core.link_manager import LinkManager
 from backend.schemas.cards import (
     SentenceCreateRequest, SentenceBulkCreateRequest,
-    VocabCreateRequest, VocabBulkCreateRequest, GrammarCreateRequest,
+    VocabCreateRequest, VocabBulkCreateRequest, GrammarCreateRequest, KnowledgeCreateRequest,
     CardResponse, BulkCardResponse, CardStatusResponse
 )
 
@@ -498,6 +499,33 @@ def create_grammar_card(req: GrammarCreateRequest) -> CardResponse:
     except Exception as link_err:
         logger.warning(f"Incremental link indexing warning: {link_err}")
     _assign_card_decks(note_id, MODEL_GRAMMAR)
+    return CardResponse(success=True, note_id=note_id, data=data)
+
+
+def create_knowledge_card(req: KnowledgeCreateRequest) -> CardResponse:
+    """지식 카드 (Knowledge Q&A): learning 저장소에서 보낸 질문·정답을 그대로 넣는다. LLM 보강·오디오 없음."""
+    question = (req.question or "").strip()
+    answer = (req.answer or "").strip()
+    if not question or not answer:
+        return CardResponse(success=False, error="질문과 정답은 비어 있을 수 없습니다")
+    fields = {"질문": question, "정답": answer, "설명": (req.explanation or "").strip(),
+              "주제": (req.topic or "").strip(), "출처": (req.source or "").strip()}
+    data = dict(fields)
+    try:
+        AnkiConnector.invoke("createDeck", deck=DECK_KNOWLEDGE)  # 이미 있으면 그대로 둔다
+        note_id = AnkiConnector.add_note(
+            deck_name=DECK_KNOWLEDGE,
+            model_name=MODEL_KNOWLEDGE,
+            fields=fields,
+            tags=list(dict.fromkeys(t.strip() for t in req.tags if t.strip())),
+            options={"allowDuplicate": False},
+        )
+    except Exception as e:
+        if "duplicate" in str(e).lower():
+            return CardResponse(success=True, duplicate=True, data=data)
+        logger.error(f"Error creating knowledge card: {e}")
+        return CardResponse(success=False, error=str(e))
+    _assign_card_decks(note_id, MODEL_KNOWLEDGE)
     return CardResponse(success=True, note_id=note_id, data=data)
 
 
