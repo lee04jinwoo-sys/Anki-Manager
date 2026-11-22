@@ -45,3 +45,6 @@ data/eval/
 # Local credentials and launcher output
 gcp-tts-key.json
 .launcher.log
+
+# Fine-tuning exports (contain collection words)
+data/sft/

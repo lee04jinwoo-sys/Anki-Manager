@@ -50,6 +50,38 @@ from integrations.anki_connect import AnkiConnector
 from utils.pos_automator import get_simple_pos, setup_nltk
 from utils.timestamp_matcher import find_best_timestamp
 
+def build_field_prompt(model_name, main_field_value, current_fields, missing_fields):
+    """노트 한 개의 누락 필드를 채우는 요청문. 학습 데이터 내보내기(scripts/export_sft_dataset.py)도 같은 형식을 쓴다."""
+    if "Vocabulary" in model_name:
+        return (
+            f"모델: {model_name}\n"
+            f"대상 단어: {main_field_value}\n"
+            f"기존 데이터: {current_fields}\n"
+            f"누락된 필드: {missing_fields}\n\n"
+            f"지침 규칙에 따라 누락된 필드만 채워 JSON으로 반환하세요."
+        )
+    if "Sentence" in model_name:
+        return (
+            f"모델: {model_name}\n"
+            f"대상 문장: {main_field_value}\n"
+            f"누락된 필드: {missing_fields}\n\n"
+            f"지침 규칙에 따라 누락된 필드(해설 등)를 채워 JSON으로 반환하세요."
+        )
+    if "Grammar" in model_name:
+        return (
+            f"모델: {model_name}\n"
+            f"문장 및 정답 데이터: {current_fields}\n"
+            f"누락된 필드: {missing_fields}\n\n"
+            f"지시: 해설(자연스러운 한국어 번역), 설명(정답 논리적 이유), 보기1~3(중복 없는 매력적인 오답)을 생성하여 JSON으로 반환하세요."
+        )
+    return (
+        f"모델: {model_name}\n"
+        f"메인 데이터: {main_field_value}\n"
+        f"기존 필드: {current_fields}\n"
+        f"누락 필드: {missing_fields}\n\n"
+        f"누락된 필드를 생성하여 JSON으로 반환하세요."
+    )
+
 def _print(pbar, *args, **kwargs):
     if pbar:
         if hasattr(pbar, 'write'):
@@ -208,37 +240,7 @@ class NoteCompleter:
         return all_results
 
     def complete_fields(self, model_name, main_field_value, current_fields, missing_fields):
-        if "Vocabulary" in model_name:
-            prompt = (
-                f"모델: {model_name}\n"
-                f"대상 단어: {main_field_value}\n"
-                f"기존 데이터: {current_fields}\n"
-                f"누락된 필드: {missing_fields}\n\n"
-                f"지침 규칙에 따라 누락된 필드만 채워 JSON으로 반환하세요."
-            )
-        elif "Sentence" in model_name:
-            prompt = (
-                f"모델: {model_name}\n"
-                f"대상 문장: {main_field_value}\n"
-                f"누락된 필드: {missing_fields}\n\n"
-                f"지침 규칙에 따라 누락된 필드(해설 등)를 채워 JSON으로 반환하세요."
-            )
-        elif "Grammar" in model_name:
-            prompt = (
-                f"모델: {model_name}\n"
-                f"문장 및 정답 데이터: {current_fields}\n"
-                f"누락된 필드: {missing_fields}\n\n"
-                f"지시: 해설(자연스러운 한국어 번역), 설명(정답 논리적 이유), 보기1~3(중복 없는 매력적인 오답)을 생성하여 JSON으로 반환하세요."
-            )
-        else:
-            prompt = (
-                f"모델: {model_name}\n"
-                f"메인 데이터: {main_field_value}\n"
-                f"기존 필드: {current_fields}\n"
-                f"누락 필드: {missing_fields}\n\n"
-                f"누락된 필드를 생성하여 JSON으로 반환하세요."
-            )
-        return self._generate(prompt)
+        return self._generate(build_field_prompt(model_name, main_field_value, current_fields, missing_fields))
 
     def complete_fields_batch(self, model_name, notes):
         """노트 여러 개의 누락 필드를 한 번에 채운다 (시스템 프롬프트·지시문 반복을 줄인다).
