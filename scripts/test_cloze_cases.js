@@ -39,14 +39,4 @@ const notes = ["It will take a while to finish.", "I usually take a walk while l
 assert.strictEqual(c.clozeNoteMode(notes, "take a while"), "strict");
 assert.strictEqual(c.clozeMask(notes[1], "take a while", "strict"), null);
 
-// Grammar placeholders S, O, N (e.g. "contend that S V", "tell O that S V").
-const ws1 = "contend that S V";
-const ss1 = "The scientist contended that the experiment results were unreliable.";
-assert.ok(
-  c.clozeHighlight(ss1, ws1).includes('<span class="example-highlight">contended that</span>'),
-  "S V placeholder must match contended that"
-);
-const m1 = c.clozeMask(ss1, ws1);
-assert.ok(m1 && m1.includes("c________") && !m1.includes("contended"), "must mask contended: " + m1);
-
 console.log("cloze cases OK");

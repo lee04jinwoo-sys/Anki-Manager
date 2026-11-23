@@ -95,7 +95,7 @@ function clozeSplitSentences(raw) {
 
 function clozeIsSlot(t) {
   var c = t.replace(/^[(\[{'"]+|[)\]}'",.;:!?]+$/g, "");
-  if (/^[ABCNOSXY](?:'s)?$/.test(c)) return true;
+  if (/^[ABCXY](?:'s)?$/.test(c)) return true;
   if (/^(someone|somebody|sb|something|sth|someone's|sb's|sth's|one's|oneself|V|V-ing|V-ed)$/i.test(c)) return true;
   return false;
 }
