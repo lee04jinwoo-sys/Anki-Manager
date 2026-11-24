@@ -123,3 +123,70 @@ def test_cards_go_to_their_configured_decks_right_away(anki):
     card_service.create_grammar_card(GrammarCreateRequest(sentence=SENTENCE, answer="meeting", distractors=["meet"]))
     assert anki["moved"] == [([556], "1. Language::1.1. English::Sentence")]
     assert all("nid:555" in q for q in anki["find_queries"])
+
+
+# --- entry cleanup (2026-11-24): HTML left over from editors and option case that gives the answer away ---
+
+import json
+import re
+from pathlib import Path
+
+FIXTURE = json.loads((Path(__file__).parent / "fixtures" / "grammar_defects_20261124.json").read_text())["cards"]
+
+
+def _no_html(text):
+    return not re.search(r"<[a-z/][^>]*>|&nbsp;", text, flags=re.I)
+
+
+def test_html_is_stripped_from_sentence_answer_and_options(anki):
+    res = card_service.create_grammar_card(GrammarCreateRequest(
+        sentence="<div>I am&nbsp;looking forward to meeting&nbsp;you.</div>", answer="meeting<br>",
+        distractors=["meet<br>", "to&nbsp;meet", "met"], translation="번역", explanation="설명"))
+    assert res.success
+    f = anki["added"][0]["fields"]
+    assert f["문장"] == SENTENCE and f["정답"] == "meeting"
+    assert [f["보기1"], f["보기2"], f["보기3"]] == ["meet", "to meet", "met"]
+
+
+def test_generated_options_are_cleaned_too(anki):
+    anki["fill"] = {"해설": "번역", "설명": "설명", "보기2": "to meet<br>", "보기3": "met&nbsp;"}
+    card_service.create_grammar_card(GrammarCreateRequest(sentence=SENTENCE, answer="meeting", distractors=["meet"]))
+    f = anki["added"][0]["fields"]
+    assert {f["보기2"], f["보기3"]} == {"to meet", "met"}
+
+
+def test_options_are_capitalized_like_an_answer_at_sentence_start(anki):
+    card_service.create_grammar_card(GrammarCreateRequest(
+        sentence="The sky is getting dark.", answer="The", distractors=["a", "an", "-"],
+        translation="번역", explanation="설명"))
+    f = anki["added"][0]["fields"]
+    assert [f["보기1"], f["보기2"], f["보기3"]] == ["A", "An", "-"]
+
+
+def test_options_are_lowercased_like_an_answer_mid_sentence(anki):
+    card_service.create_grammar_card(GrammarCreateRequest(
+        sentence="She has a dog at home.", answer="a", distractors=["The", "An", "-"],
+        translation="번역", explanation="설명"))
+    f = anki["added"][0]["fields"]
+    assert [f["보기1"], f["보기2"], f["보기3"]] == ["the", "an", "-"]
+
+
+def test_pronoun_i_keeps_its_capital(anki):
+    card_service.create_grammar_card(GrammarCreateRequest(
+        sentence="She thinks that we are right.", answer="we", distractors=["I", "us", "our"],
+        translation="번역", explanation="설명"))
+    assert anki["added"][0]["fields"]["보기1"] == "I"
+
+
+@pytest.mark.parametrize("card", FIXTURE, ids=lambda c: f'{c["note_id"]}-{c["expect"]}')
+def test_real_defective_cards_from_the_deck(anki, card):
+    """Cards that were broken in the deck: double blanks and duplicate options are refused, HTML is cleaned."""
+    res = card_service.create_grammar_card(GrammarCreateRequest(
+        sentence=card["sentence"], answer=card["answer"], distractors=card["distractors"],
+        translation=card["translation"], explanation=card["explanation"], auto_enrich=False))
+    if card["expect"] == "reject":
+        assert not res.success and not anki["added"], card["why"]
+    else:
+        assert res.success, res.error
+        f = anki["added"][0]["fields"]
+        assert all(_no_html(f[k]) for k in ["문장", "정답", "보기1", "보기2", "보기3"]), f

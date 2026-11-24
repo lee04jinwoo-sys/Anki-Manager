@@ -429,10 +429,28 @@ def _answer_occurrences(sentence: str, answer: str) -> int:
     return len(re.findall(r"\b" + re.escape(answer) + r"\b", sentence, flags=re.IGNORECASE))
 
 
+def _clean_text(text: str) -> str:
+    """편집기가 남긴 HTML(<br>, <div>, &nbsp; 등)을 지우고 공백을 하나로 모은다."""
+    text = re.sub(r"<[^>]+>", " ", text or "")
+    text = html.unescape(text).replace("\xa0", " ")
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _match_case(option: str, answer: str) -> str:
+    """보기 첫 글자의 대소문자를 정답에 맞춘다. 대문자 보기만 정답이면 문법을 몰라도 맞힐 수 있다.
+    대명사 I는 그대로 둔다."""
+    if not option or not answer or not option[0].isalpha() or not answer[0].isalpha():
+        return option
+    if re.match(r"I\b", option):
+        return option
+    first = option[0].upper() if answer[0].isupper() else option[0].lower()
+    return first + option[1:]
+
+
 def create_grammar_card(req: GrammarCreateRequest) -> CardResponse:
     """문법 객관식 카드: 문장 속 정답이 빈칸이 되고, 보기1~3 + 정답 네 개가 선택지가 된다."""
-    sentence = req.sentence.strip()
-    answer = (req.answer or "").strip()
+    sentence = _clean_text(req.sentence)
+    answer = _clean_text(req.answer)
     if not sentence:
         return CardResponse(success=False, error="Sentence cannot be empty")
     hits = _answer_occurrences(sentence, answer)
@@ -445,7 +463,7 @@ def create_grammar_card(req: GrammarCreateRequest) -> CardResponse:
     seen = {answer.lower()}
     distractors = []
     for d in req.distractors:
-        d = (d or "").strip()
+        d = _match_case(_clean_text(d), answer)
         if d and d.lower() not in seen:
             seen.add(d.lower())
             distractors.append(d)
@@ -466,8 +484,9 @@ def create_grammar_card(req: GrammarCreateRequest) -> CardResponse:
             generated = {}
         for k in missing:
             v = generated.get(k)
-            if isinstance(v, str) and v.strip():
-                fields[k] = html.unescape(v.strip())
+            if isinstance(v, str) and _clean_text(v):
+                v = _clean_text(v)
+                fields[k] = _match_case(v, answer) if k in GRAMMAR_OPTION_FIELDS else v
 
     options = [fields.get(k, "") for k in GRAMMAR_OPTION_FIELDS] + [answer]
     if any(not o for o in options) or len({o.lower() for o in options}) != 4:

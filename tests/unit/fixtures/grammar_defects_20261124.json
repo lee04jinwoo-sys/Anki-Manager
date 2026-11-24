@@ -1,0 +1,243 @@
+{
+ "source": "server English Grammar deck, original fields before the 2026-11-24 cleanup",
+ "cards": [
+  {
+   "note_id": 1769752566606,
+   "expect": "reject",
+   "why": "answer appears twice",
+   "sentence": "Access to the building is restricted to authorized personnel only.",
+   "answer": "to",
+   "distractors": [
+    "for",
+    "with",
+    "on"
+   ],
+   "translation": "건물 출입은 허가된 직원만 가능합니다.",
+   "explanation": "'~로의 접근/입입'을 뜻하는 명사 access 뒤에는 방향의 to가 옵니다."
+  },
+  {
+   "note_id": 1770104274202,
+   "expect": "reject",
+   "why": "answer appears twice",
+   "sentence": "The rich should help the poor in our society.",
+   "answer": "The",
+   "distractors": [
+    "A",
+    "An",
+    "-"
+   ],
+   "translation": "우리 사회에서는 부자들이 가난한 사람들을 도와야 합니다.",
+   "explanation": "&#x27;the + 형용사&#x27;는 복수 보통명사(~하는 사람들)를 나타냅니다."
+  },
+  {
+   "note_id": 1770104274225,
+   "expect": "reject",
+   "why": "answer appears twice",
+   "sentence": "The sky is getting dark as the clouds move in.",
+   "answer": "The",
+   "distractors": [
+    "A",
+    "An",
+    "-"
+   ],
+   "translation": "구름이 몰려오면서 하늘이 어두워지고 있습니다.",
+   "explanation": "하늘, 태양 등 유일한 자연물 앞에는 &#x27;the&#x27;를 씁니다."
+  },
+  {
+   "note_id": 1770104274226,
+   "expect": "reject",
+   "why": "answer appears twice",
+   "sentence": "She has a cat and a dog at home.",
+   "answer": "a",
+   "distractors": [
+    "an",
+    "the",
+    "-"
+   ],
+   "translation": "그녀는 집에 고양이와 개를 한 마리씩 키우고 있습니다.",
+   "explanation": "막연한 하나를 처음 언급할 때는 부정관사 &#x27;a&#x27;를 씁니다."
+  },
+  {
+   "note_id": 1771429462414,
+   "expect": "reject",
+   "why": "answer appears twice",
+   "sentence": "The more you practice speaking English, the more confident you will become.",
+   "answer": "the more",
+   "distractors": [
+    "more",
+    "most",
+    "the most"
+   ],
+   "translation": "영어로 말하기 연습을 더 많이 할수록 더 자신감이 생길 것입니다.",
+   "explanation": "&#x27;더 ~할수록 더 ~하다&#x27;는 의미의 &#x27;The 비교급, the 비교급&#x27; 구문입니다."
+  },
+  {
+   "note_id": 1770823607662,
+   "expect": "reject",
+   "why": "duplicate options",
+   "sentence": "I didn&#x27;t mean to hurt your feelings with my comment.",
+   "answer": "to hurt",
+   "distractors": [
+    "hurting",
+    "hurt",
+    "hurt"
+   ],
+   "translation": "제 말 때문에 기분을 상하게 할 의도는 아니었습니다.",
+   "explanation": "의도적으로 ~하려던 것이 아니라는 뜻이므로 to부정사를 씁니다."
+  },
+  {
+   "note_id": 1779372688885,
+   "expect": "reject",
+   "why": "duplicate options",
+   "sentence": "He aims to become the best player in the team.",
+   "answer": "to become",
+   "distractors": [
+    "becoming",
+    "became",
+    "became"
+   ],
+   "translation": "그는 팀에서 최고의 선수가 되는 것을 목표로 하고 있습니다.",
+   "explanation": "동사 aim은 목적어로 동명사가 아닌 to 부정사만을 취하는 동사입니다. 따라서 'aim + to-v'의 구조를 따라야 하므로 'to become'이 정답입니다. 'becoming'은 동명사로 목적어 자리에 올 수 없으며, 'became'은 과거형 동사로 문장 내에서 이미 본동사가 존재할 때 중복해서 사용할 수 없습니다."
+  },
+  {
+   "note_id": 1770104274214,
+   "expect": "accept",
+   "why": "<br> in options is cleaned",
+   "sentence": "The Himalayas are the highest mountains on Earth.",
+   "answer": "The Himalayas<br>",
+   "distractors": [
+    "A Himalayas<br>",
+    "An Himalayas<br>",
+    "Himalayas<br>"
+   ],
+   "translation": "히말라야는 지구상에서 가장 높은 산맥입니다.",
+   "explanation": "산맥 이름 앞에는 관사 &#x27;the&#x27;를 붙입니다."
+  },
+  {
+   "note_id": 1795324066442,
+   "expect": "accept",
+   "why": "&nbsp;/<div> in sentence is cleaned",
+   "sentence": "Therefore, when we use&nbsp;these tools&nbsp;on our digital devices, our personal information is collected by&nbsp;apps and services and sent to the&nbsp;data centers&nbsp;of large companies and organizations.",
+   "answer": "is",
+   "distractors": [
+    "are",
+    "be",
+    "been"
+   ],
+   "translation": "따라서, 우리가 이러한 것들을 디지털 기기에서 사용할 때, 우리의 개인 정보는 애플리케이션과 서비스에 의해 수집되어 대기업 및 조직의 데이터 센터로 전송됩니다.",
+   "explanation": "주어 'our personal information'이 단수이므로 단수 동사 'is'가 와야 합니다."
+  },
+  {
+   "note_id": 1795324085091,
+   "expect": "accept",
+   "why": "&nbsp;/<div> in sentence is cleaned",
+   "sentence": "In order to answer the question, 'Why is political polarization increasing?', it is necessary to look at how people consume news.&nbsp;",
+   "answer": "is political polarization",
+   "distractors": [
+    "political polarization is",
+    "does political polarization",
+    "political polarization does"
+   ],
+   "translation": "'왜 정치적 양극화가 심화되고 있는가?'라는 질문에 답하기 위해선 사람들이 뉴스를 어떻게 소비하는지를 살펴볼 필요가 있다.",
+   "explanation": "인용 부호 안에 있는 문장은 직접 인용된 질문이므로, 일반적인 의문문 어순(의문사 + 동사 + 주어)을 유지합니다. 따라서 'is political polarization'이 올바른 형태입니다. 만약 간접 의문문이었다면 'political polarization is'가 맞았을 것입니다."
+  },
+  {
+   "note_id": 1795324089190,
+   "expect": "accept",
+   "why": "&nbsp;/<div> in sentence is cleaned",
+   "sentence": "Unlike a decade ago,&nbsp;people now watch videos on&nbsp;YouTube&nbsp;and share their opinions on Facebook.",
+   "answer": "now watch videos",
+   "distractors": [
+    "watched video",
+    "watch video",
+    "watches videos"
+   ],
+   "translation": "사람들은 10년 전과 달리 지금은 유튜브에서 동영상을 보고 페이스북에 의견을 공유합니다.",
+   "explanation": "주절의 시제가 현재 시제(watch, share)이므로, 'now'와 함께 현재 시제를 사용해야 합니다."
+  },
+  {
+   "note_id": 1795324090816,
+   "expect": "accept",
+   "why": "&nbsp;/<div> in sentence is cleaned",
+   "sentence": "Therefore, most cases are resolved simply&nbsp;by&nbsp;paying fines or&nbsp;dismissing&nbsp;a few employees responsible for&nbsp;them.",
+   "answer": "cases are",
+   "distractors": [
+    "case",
+    "case is",
+    "cases is"
+   ],
+   "translation": "따라서 대부분의 사건은 벌금을 납부하거나 이에 책임이 있는 일부 직원을 해고하는 것으로 종결됩니다.",
+   "explanation": "문맥상 'cases'는 복수형이므로 'cases are'가 맞습니다."
+  },
+  {
+   "note_id": 1795324096291,
+   "expect": "accept",
+   "why": "&nbsp;/<div> in sentence is cleaned",
+   "sentence": "In the past, people mostly chose what to watch or read; while there were some recommended videos or articles,&nbsp;they&nbsp;were mostly not interesting enough because of poor recommendation algorithms.",
+   "answer": "chose",
+   "distractors": [
+    "choose",
+    "chosen",
+    "choosing"
+   ],
+   "translation": "과거에는 사람들이 주로 무엇을 볼지 또는 읽을지 선택했습니다. 추천 영상이나 기사가 일부 있었지만, 대부분의 경우 형편없는 추천 알고리즘 때문에 충분히 흥미롭지 않았습니다.",
+   "explanation": "문장의 시작에 'In the past'라는 명확한 과거 시점 표현이 있으므로, 동사는 과거형이 되어야 합니다. 'chose'는 'choose'의 과거형입니다."
+  },
+  {
+   "note_id": 1795324124542,
+   "expect": "accept",
+   "why": "&nbsp;/<div> in sentence is cleaned",
+   "sentence": "For example,&nbsp;the&nbsp;YouTube homepage of a person who believes in&nbsp;a&nbsp;certain conspiracy theory will only show videos from&nbsp;like-minded&nbsp;creators, because&nbsp;they&nbsp;are more likely to click on and watch those videos all the way through",
+   "answer": "believes",
+   "distractors": [
+    "believe",
+    "believing",
+    "believed"
+   ],
+   "translation": "예를 들어, 특정 음모론을 믿는 사람의 유튜브 페이지는 비슷한 생각을 가진 다른 사람들이 만든 영상만 보여줄 것입니다. 왜냐하면 사용자들이 이러한 영상을 더 많이 클릭하고 시청할 것이기 때문입니다.",
+   "explanation": "주어 'a person'이 3인칭 단수이므로 동사 'believe'에 '-s'를 붙여 'believes'가 되어야 합니다."
+  },
+  {
+   "note_id": 1795324132516,
+   "expect": "accept",
+   "why": "&nbsp;/<div> in sentence is cleaned",
+   "sentence": "<div><div>Nowadays, shoppers often decide what to buy online based entirely on customer reviews.&nbsp;</div></div>",
+   "answer": "what",
+   "distractors": [
+    "to what",
+    "which",
+    "how"
+   ],
+   "translation": "요즘 사용자들은 고객 후기를 바탕으로 온라인에서 무엇을 살지 전적으로 결정합니다.",
+   "explanation": "의문사 'what'은 명사절을 이끌어 '무엇을'이라는 의미의 목적어 역할을 합니다. 'decide'의 목적절로 'what to buy'는 '무엇을 살지'라는 의미의 명사구이며, 'what'이 이끄는 명사절 'what they decide to buy'의 축약형으로 볼 수 있습니다. 'to what'은 문법적으로 올바른 표현이 아닙니다."
+  },
+  {
+   "note_id": 1795325887741,
+   "expect": "accept",
+   "why": "&nbsp;/<div> in sentence is cleaned",
+   "sentence": "Without books, our knowledge would be passed down orally, and most of it would be forgotten once&nbsp;the previous generation&nbsp;was gone.",
+   "answer": "it",
+   "distractors": [
+    "them",
+    "us",
+    "that"
+   ],
+   "translation": "책이 없었다면 우리의 지식은 구전으로 전해졌을 것이고, 전 세대가 사라질 때 대부분은 잊혀졌을 것이다.",
+   "explanation": "정답 'it'은 앞 문장의 'our knowledge'를 가리키는 대명사이며, 'most of it'에서 'it'이 바로 그 의미를 대신한다. 다른 선택지는 복수형이나 인칭대명사라서 의미가 맞지 않는다."
+  },
+  {
+   "note_id": 1795325905940,
+   "expect": "accept",
+   "why": "&nbsp;/<div> in sentence is cleaned",
+   "sentence": "For example, the invention of the camera&nbsp;allowed people to enjoy&nbsp;movies in theaters,&nbsp;while&nbsp;smartphones and&nbsp;the&nbsp;internet&nbsp;enable them to&nbsp;freely share their thoughts online today.",
+   "answer": "the invention of the",
+   "distractors": [
+    "invention of",
+    "the invention",
+    "invention of the"
+   ],
+   "translation": "예를 들어, 카메라의 발명 덕분에 사람들은 영화관에서 영화를 보는 시간을 가질 수 있었고, 스마트폰과 인터넷 덕분에 사람들은 자유롭게 이야기를 나누고 생각을 공유할 수 있습니다.",
+   "explanation": "정답인 'the invention of the'는 'due to' 뒤에 오는 전치사구에서 명사구 전체를 한정하기 위해 관사 'the'가 필요하기 때문에 정답이다."
+  }
+ ]
+}
