@@ -249,10 +249,18 @@ class NoteCompleter:
         """
         if "Grammar" in model_name:
             guide = "해설은 자연스러운 한국어 번역, 설명은 정답의 논리적 이유, 보기1~3은 정답과 겹치지 않는 매력적인 오답."
+        elif model_name == "Chinese Sentence":
+            guide = "뜻은 문장의 자연스러운 한국어 번역, 한어병음은 문장 전체의 성조 부호 포함 병음만 직접 작성."
+        elif model_name == "Chinese Vocabulary":
+            guide = "중국어 지침 규칙(뜻·한어병음·품사·예문 2개 ' ||| ' 구분 형식)을 그대로 따른다."
         elif "Sentence" in model_name:
             guide = "해설은 문장의 자연스러운 한국어 번역만 직접 작성."
         else:
             guide = "지침 규칙(뜻·품사·예문·설명 형식)을 그대로 따른다."
+        sys_inst = self.sys_instruct
+        if model_name.startswith("Chinese"):
+            from config import NOTE_COMPLETOR_ZH_SYS_INSTRUCT
+            sys_inst = NOTE_COMPLETOR_ZH_SYS_INSTRUCT
         payload = [{"id": str(n["id"]), "main": n["main"], "current": n["current"], "missing": n["missing"]} for n in notes]
         prompt = (
             f"모델: {model_name}\n"
@@ -264,7 +272,7 @@ class NoteCompleter:
         data = None
         if self.use_router:
             try:
-                data, _ = generate_json(self.sys_instruct, prompt, GEMINI_DEFAULT_TEMPERATURE)
+                data, _ = generate_json(sys_inst, prompt, GEMINI_DEFAULT_TEMPERATURE)
             except AllRoutesFailed as e:
                 _print(self.pbar, f"⚠️ 무료 모델 묶음 보강 실패, 유료 키로 전환: {e}")
         if data is None:
@@ -272,7 +280,7 @@ class NoteCompleter:
                 model=self.model_id,
                 contents=prompt,
                 config=types.GenerateContentConfig(
-                    system_instruction=self.sys_instruct,
+                    system_instruction=sys_inst,
                     response_mime_type="application/json",
                     temperature=GEMINI_DEFAULT_TEMPERATURE,
                 ),
@@ -287,7 +295,7 @@ class NoteCompleter:
         return out
 
 def run_universal_field_completion(pbar=None):
-    from config import MODEL_SENTENCE, MODEL_VOCAB, MODEL_GRAMMAR
+    from config import MODEL_SENTENCE, MODEL_VOCAB, MODEL_GRAMMAR, MODEL_ZH_VOCAB, MODEL_ZH_SENTENCE
     
     # 필수(Trigger) 필드 설정: 이 필드들이 비어있어야 보강 대상으로 간주함
     models_config = {
@@ -302,6 +310,14 @@ def run_universal_field_completion(pbar=None):
         MODEL_GRAMMAR: {
             "triggers": ["해설", "설명", "보기1", "보기2", "보기3"],
             "all_fields": ["문장", "해설", "보기1", "보기2", "보기3", "정답", "설명"]
+        },
+        MODEL_ZH_VOCAB: {
+            "triggers": ["뜻", "한어병음", "품사", "예문"],
+            "all_fields": ["단어", "뜻", "한어병음", "품사", "예문"]
+        },
+        MODEL_ZH_SENTENCE: {
+            "triggers": ["뜻", "한어병음"],
+            "all_fields": ["문장", "뜻", "한어병음"]
         }
     }
     

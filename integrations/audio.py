@@ -12,6 +12,7 @@ from google.cloud import texttospeech
 from config import (
     VOICE_LIST, TARGET_NOTE_TYPES_FOR_AUDIO,
     TARGET_MODELS_FOR_AUDIO_SENTENCE, TARGET_MODELS_FOR_AUDIO_VOCAB,
+    TARGET_MODELS_FOR_AUDIO_CHINESE,
     TTS_SENTENCE_LANGUAGE_CODE, TTS_VOCAB_LANGUAGE, TTS_VOCAB_TLD,
     TEMP_DIR, AUDIO_ADDER_MAX_WORKERS
 )
@@ -116,6 +117,9 @@ class AnkiTTSFiller:
         try:
             if note['type'] == "vocab":
                 tag, method = cls.generate_gtts(note['text'], pbar=pbar)
+            elif note['type'] == "chinese":
+                if tts_client:
+                    tag, method = cls.generate_chinese_tts(tts_client, note['text'], pbar=pbar)
             else:
                 # 문장은 오직 GCP Chirp/Studio만 시도 (실패 시 gTTS 폴백 없이 빈 상태 유지)
                 if tts_client:
@@ -157,6 +161,10 @@ class AnkiTTSFiller:
             elif model in TARGET_MODELS_FOR_AUDIO_VOCAB:
                 if fields.get('단어', {}).get('value') and not audio_field:
                     target_notes.append({"id": n['noteId'], "text": fields['단어']['value'], "type": "vocab"})
+            elif model in TARGET_MODELS_FOR_AUDIO_CHINESE:
+                text_key = '문장' if 'Sentence' in model else '단어'
+                if fields.get(text_key, {}).get('value') and not audio_field:
+                    target_notes.append({"id": n['noteId'], "text": fields[text_key]['value'], "type": "chinese"})
 
         if not target_notes:
             if pbar and step_points > 0: pbar.update(step_points)

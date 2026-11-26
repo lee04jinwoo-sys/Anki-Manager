@@ -88,9 +88,13 @@ VOICE_LIST_ZH = [
     "cmn-CN-Chirp3-HD-Aoede"
 ]
 
-TARGET_NOTE_TYPES_FOR_AUDIO = '"note:English Speaking" OR "note:English Grammar" OR "note:English Sentence" OR "note:English Vocabulary"'
+TARGET_NOTE_TYPES_FOR_AUDIO = (
+    '"note:English Speaking" OR "note:English Grammar" OR "note:English Sentence" '
+    'OR "note:English Vocabulary" OR "note:Chinese Vocabulary" OR "note:Chinese Sentence"'
+)
 TARGET_MODELS_FOR_AUDIO_SENTENCE = ["English Speaking", "English Grammar", "English Sentence"]
 TARGET_MODELS_FOR_AUDIO_VOCAB = ["English Vocabulary"]
+TARGET_MODELS_FOR_AUDIO_CHINESE = ["Chinese Vocabulary", "Chinese Sentence"]
 
 # --- Concurrency Settings ---
 NOTE_COMPLETOR_MAX_WORKERS = 6
