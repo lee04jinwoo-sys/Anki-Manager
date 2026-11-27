@@ -512,23 +512,6 @@ NOTE_TYPES_CONFIG = {
   margin-bottom: 15px;
 }
 
-.synonyms-box {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
-  margin-bottom: 15px;
-}
-.synonym-tag {
-  background: #f1f5f9;
-  color: #475569;
-  padding: 4px 12px;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: 500;
-  border: 1px solid #e2e8f0;
-}
-
 /* --- 다크 모드 (Night Mode) --- */
 .card.nightMode {
   background: #1f2937;
@@ -552,11 +535,6 @@ NOTE_TYPES_CONFIG = {
 .nightMode .title,
 .nightMode .word {
   color: #f9fafb;
-}
-.nightMode .synonym-tag {
-  background: #374151;
-  color: #d1d5db;
-  border-color: #4b5563;
 }""",
         "templates": {
             "카드 1": {
@@ -581,34 +559,6 @@ NOTE_TYPES_CONFIG = {
     });
     el.parentNode.replaceChild(g,el);
   });
-})();
-</script>
-
-<script>
-(function(){
-  function setupSynonyms() {
-    document.querySelectorAll(".synonyms-box").forEach(function(box){
-      var raw = box.getAttribute("data-synonyms") || "";
-      if (!raw.trim() || box.hasAttribute("data-processed")) return;
-      
-      var entries = raw.split(/[,;]/).map(function(s){ return s.trim(); }).filter(Boolean);
-      box.innerHTML = "";
-      
-      entries.forEach(function(entry){
-        var word = entry.split("|")[0];
-        var tag = document.createElement("span");
-        tag.className = "synonym-tag";
-        tag.textContent = word;
-        box.appendChild(tag);
-      });
-      box.setAttribute("data-processed", "true");
-    });
-  }
-
-  setupSynonyms();
-  if (typeof onUpdateHook !== \"undefined\") {
-    onUpdateHook.push(setupSynonyms);
-  }
 })();
 </script>
 <div class=\"deck\">{{Deck}}</div>""",
@@ -683,30 +633,6 @@ NOTE_TYPES_CONFIG = {
     });
     el.parentNode.replaceChild(g,el);
   });
-})();
-</script>
-<script>
-(function(){
-  function setupSynonyms() {
-    document.querySelectorAll(\".synonyms-box\").forEach(function(box){
-      var raw = box.getAttribute(\"data-synonyms\") || \"\";
-      if (!raw.trim() || box.hasAttribute(\"data-processed\")) return;
-      var entries = raw.split(/[,;]/).map(function(s){ return s.trim(); }).filter(Boolean);
-      box.innerHTML = \"\";
-      entries.forEach(function(entry){
-        var word = entry.split(\"|\")[0];
-        var tag = document.createElement(\"span\");
-        tag.className = \"synonym-tag\";
-        tag.textContent = word;
-        box.appendChild(tag);
-      });
-      box.setAttribute(\"data-processed\", \"true\");
-    });
-  }
-  setupSynonyms();
-  if (typeof onUpdateHook !== \"undefined\") {
-    onUpdateHook.push(setupSynonyms);
-  }
 })();
 </script>
 <div class=\"deck\">{{Deck}}</div>""",
