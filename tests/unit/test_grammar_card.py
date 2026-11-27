@@ -39,7 +39,7 @@ def anki(monkeypatch):
     monkeypatch.setattr(card_service.LinkManager, "index_single_sentence",
                         classmethod(lambda cls, nid, text: state["indexed"].append(nid)))
 
-    fill = {"해설": "만나기를 고대합니다.", "설명": "look forward to의 to는 전치사라 동명사가 옵니다.",
+    fill = {"해설": "만나기를 고대합니다.",
             "보기2": "to meet", "보기3": "met"}
 
     class FakeCompleter:
@@ -64,20 +64,21 @@ def test_adds_grammar_note_with_learner_mistake_as_option(anki):
     f = note["fields"]
     assert f["문장"] == SENTENCE and f["정답"] == "meeting" and f["보기1"] == "meet"
     assert {f["보기2"], f["보기3"]} == {"to meet", "met"}
-    assert f["해설"] and f["설명"]
+    assert f["해설"] and "설명" not in f
     # only the missing fields are generated; the learner's mistake is kept as given
     _, main, current, missing = anki["completer_calls"][0]
     assert main == SENTENCE and current["보기1"] == "meet"
-    assert set(missing) == {"해설", "설명", "보기2", "보기3"}
+    assert set(missing) == {"해설", "보기2", "보기3"}
     assert anki["queued"] == [(555, SENTENCE)] and anki["indexed"] == [555]
 
 
-def test_given_translation_and_explanation_are_not_regenerated(anki):
+def test_given_translation_is_not_regenerated(anki):
     card_service.create_grammar_card(GrammarCreateRequest(
         sentence=SENTENCE, answer="meeting", distractors=["meet", "to meet", "met"],
-        translation="번역", explanation="설명"))
+        translation="번역"))
     assert anki["completer_calls"] == []
     assert anki["added"][0]["fields"]["해설"] == "번역"
+    assert "설명" not in anki["added"][0]["fields"]
 
 
 @pytest.mark.parametrize("answer", ["meet you soon", "eting", ""])

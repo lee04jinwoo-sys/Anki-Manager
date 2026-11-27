@@ -44,7 +44,6 @@ export const PromoteChunkModal: React.FC<PromoteChunkModalProps> = ({
   const [trans1, setTrans1] = useState('')
   const [example2, setExample2] = useState('')
   const [trans2, setTrans2] = useState('')
-  const [explanation, setExplanation] = useState('')
 
   // Options
   const [addSentences, setAddSentences] = useState(true)
@@ -89,7 +88,6 @@ export const PromoteChunkModal: React.FC<PromoteChunkModalProps> = ({
     setTrans1(cand.trans_1)
     setExample2(cand.example_2)
     setTrans2(cand.trans_2)
-    setExplanation(cand.explanation)
   }
 
   const handlePromote = async () => {
@@ -117,7 +115,6 @@ export const PromoteChunkModal: React.FC<PromoteChunkModalProps> = ({
         trans_1: trans1.trim(),
         example_2: example2.trim(),
         trans_2: trans2.trim(),
-        explanation: explanation.trim(),
         add_sentences_to_deck: addSentences,
         reset_to_new: resetToNew,
       })

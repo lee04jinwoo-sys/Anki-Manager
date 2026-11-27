@@ -87,7 +87,7 @@ def has_placeholder(sentence):
 
 
 def vocab_quality(f):
-    if _missing(f, ["단어", "뜻", "품사", "예문", "설명"]):
+    if _missing(f, ["단어", "뜻", "품사", "예문"]):
         return False, "missing_field"
     if "/" in f["뜻"]:
         return False, "slash_in_meaning"
@@ -109,7 +109,7 @@ def sentence_quality(f):
 
 
 def grammar_quality(f):
-    names = ["문장", "해설", "설명", "정답", "보기1", "보기2", "보기3"]
+    names = ["문장", "해설", "정답", "보기1", "보기2", "보기3"]
     if _missing(f, names):
         return False, "missing_field"
     choices = [f[n].lower() for n in ("정답", "보기1", "보기2", "보기3")]
@@ -143,11 +143,11 @@ def _current_and_missing(model, f, note_id):
     if model == "English Vocabulary":
         # 단어만 넣는 경우와 단어+뜻을 넣는 경우를 반씩 섞는다
         if _bucket(note_id, salt="variant:") < 50:
-            return {"단어": f["단어"]}, ["뜻", "품사", "예문", "설명"]
-        return {"단어": f["단어"], "뜻": f["뜻"]}, ["품사", "예문", "설명"]
+            return {"단어": f["단어"]}, ["뜻", "품사", "예문"]
+        return {"단어": f["단어"], "뜻": f["뜻"]}, ["품사", "예문"]
     if model == "English Sentence":
         return {"문장": f["문장"]}, ["해설"]
-    return {"문장": f["문장"], "정답": f["정답"]}, ["해설", "설명", "보기1", "보기2", "보기3"]
+    return {"문장": f["문장"], "정답": f["정답"]}, ["해설", "보기1", "보기2", "보기3"]
 
 
 def build_example(note, reason_out=None):

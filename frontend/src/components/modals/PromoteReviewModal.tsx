@@ -13,7 +13,6 @@ const FIELDS: { key: EditableField; label: string; multiline?: boolean }[] = [
   { key: 'trans_1', label: '번역 1' },
   { key: 'example_2', label: '예문 2' },
   { key: 'trans_2', label: '번역 2' },
-  { key: 'explanation', label: '설명', multiline: true },
 ]
 
 interface Props {
@@ -217,7 +216,7 @@ export const PromoteReviewModal: React.FC<Props> = ({ isOpen, items, onClose, on
                         className="mt-2 inline-flex items-center gap-1 text-[11px] text-apple-secondary hover:text-apple-text"
                       >
                         {isOpenRow ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                        예문·설명 {isOpenRow ? '접기' : '보기/수정'}
+                        예문 {isOpenRow ? '접기' : '보기/수정'}
                       </button>
                     )}
                     {cand && isOpenRow && (

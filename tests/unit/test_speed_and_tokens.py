@@ -126,7 +126,7 @@ def test_build_regex_compiles_each_word_once(monkeypatch):
     assert count["n"] == 600
 
 
-def test_prompt_requires_korean_explanation(gemini, monkeypatch):
+def test_prompt_excludes_explanation_and_requires_korean_meaning_and_trans(gemini, monkeypatch):
     seen = []
 
     class SpyClient:
@@ -142,7 +142,8 @@ def test_prompt_requires_korean_explanation(gemini, monkeypatch):
 
     monkeypatch.setattr(cs.genai, "Client", SpyClient)
     cs.CorpusService.get_collocations("mitosis")
-    assert "explanation" in seen[0] and "한국어" in seen[0].split("explanation", 1)[1][:200]
+    assert '"explanation"' not in seen[0]
+    assert "meaning" in seen[0] and "한국어" in seen[0]
 
 
 def test_cache_from_older_prompt_version_is_ignored(gemini, monkeypatch):

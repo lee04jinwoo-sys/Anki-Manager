@@ -8,7 +8,7 @@ CALLS: dict = {}  # 가짜 Gemini 호출 기록 (env fixture가 채운다)
 
 
 def _vocab(nid, word, **fields):
-    base = {"단어": word, "뜻": "", "품사": "v", "유의어": "", "예문": "", "사진": "", "설명": "", "소리": ""}
+    base = {"단어": word, "뜻": "", "품사": "v", "유의어": "", "예문": "", "사진": "", "소리": ""}
     base.update(fields)
     return {"noteId": nid, "modelName": "English Vocabulary", "fields": {k: {"value": v} for k, v in base.items()}}
 
@@ -67,10 +67,10 @@ def env(monkeypatch):
 
 def test_ai_response_only_fills_missing_fields(env):
     notes, updates, responses = env
-    notes["English Vocabulary"].append(_vocab(1, "run", 뜻="", 예문="", 설명=""))
+    notes["English Vocabulary"].append(_vocab(1, "run", 뜻="", 예문=""))
     responses["run"] = {"단어": "RUN (changed)", "품사": "n", "뜻": "달리다", "예문": "I run.", "설명": "d", "unknown": "x"}
     completer_mod.run_universal_field_completion()
-    assert updates == [(1, {"뜻": "달리다", "예문": "I run.", "설명": "d"})]
+    assert updates == [(1, {"뜻": "달리다", "예문": "I run."})]
 
 
 def test_non_string_values_are_dropped(env):
@@ -87,7 +87,7 @@ def test_one_failure_does_not_stop_others(env):
     responses["run"] = RuntimeError("gemini 500")
     responses["walk"] = {"뜻": "걷다", "예문": "I walk.", "설명": "d"}
     completer_mod.run_universal_field_completion()
-    assert (2, {"뜻": "걷다", "예문": "I walk.", "설명": "d"}) in updates
+    assert (2, {"뜻": "걷다", "예문": "I walk."}) in updates
 
 
 def _ok(word):

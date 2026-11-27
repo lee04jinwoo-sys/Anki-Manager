@@ -28,8 +28,8 @@ TIMEOUT_POLLS = 240  # 15초 × 240 = 1시간
 # core.completer.run_universal_field_completion, AnkiTTSFiller, run_pos_automation 과 같은 조건
 QUERIES = {
     "fields": ('(note:"English Sentence" "해설:") OR '
-               '(note:"English Vocabulary" ("뜻:" OR "품사:" OR "예문:" OR "설명:")) OR '
-               '(note:"English Grammar" ("해설:" OR "설명:" OR "보기1:" OR "보기2:" OR "보기3:")) OR '
+               '(note:"English Vocabulary" ("뜻:" OR "품사:" OR "예문:")) OR '
+               '(note:"English Grammar" ("해설:" OR "보기1:" OR "보기2:" OR "보기3:")) OR '
                '(note:"Chinese Vocabulary" ("뜻:" OR "한어병음:" OR "품사:" OR "예문:")) OR '
                '(note:"Chinese Sentence" ("뜻:" OR "한어병음:"))'),
     "audio": ('("note:English Speaking" OR "note:English Grammar" OR "note:English Sentence" '

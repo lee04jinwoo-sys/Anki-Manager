@@ -26,7 +26,7 @@ export async function mapWithConcurrency<T, R>(
   return out
 }
 
-export type EditableField = 'new_chunk' | 'meaning' | 'example_1' | 'trans_1' | 'example_2' | 'trans_2' | 'explanation'
+export type EditableField = 'new_chunk' | 'meaning' | 'example_1' | 'trans_1' | 'example_2' | 'trans_2'
 
 export interface ReviewRow {
   noteId: number
@@ -63,7 +63,6 @@ export function buildPromoteRequests(
       trans_1: v('trans_1', c.trans_1),
       example_2: v('example_2', c.example_2),
       trans_2: v('trans_2', c.trans_2),
-      explanation: v('explanation', c.explanation),
       add_sentences_to_deck: opts.addSentences,
       reset_to_new: opts.resetToNew,
     })

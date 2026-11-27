@@ -29,7 +29,7 @@ class VocabItem(BaseModel):
     pos: Optional[str] = ""
     synonyms: Optional[str] = "" # Received for compatibility, strictly cleared internally
     example: Optional[str] = ""
-    explanation: Optional[str] = ""
+    explanation: Optional[str] = "" # Ignored (설명 필드 제거)
 
 class VocabCreateRequest(BaseModel):
     word: str
@@ -37,7 +37,7 @@ class VocabCreateRequest(BaseModel):
     pos: Optional[str] = ""
     synonyms: Optional[str] = "" # Ignored, set to ""
     example: Optional[str] = ""
-    explanation: Optional[str] = ""
+    explanation: Optional[str] = "" # Ignored (설명 필드 제거)
     auto_enrich: bool = True
     generate_audio: bool = True
     use_free_router: bool = True  # True면 무료 등급 모델부터 시도 (기본 활성화)
@@ -53,7 +53,7 @@ class GrammarCreateRequest(BaseModel):
     answer: str                        # 문장 속에서 빈칸이 될 부분
     distractors: List[str] = Field(default_factory=list)  # 주어진 오답 (예: 학습자가 실제로 쓴 틀린 형태), 최대 3개
     translation: Optional[str] = ""    # 해설. 비면 생성
-    explanation: Optional[str] = ""    # 설명. 비면 생성
+    explanation: Optional[str] = ""    # Ignored (설명 필드 제거)
     auto_enrich: bool = True
     generate_audio: bool = True
     tags: List[str] = Field(default_factory=list)

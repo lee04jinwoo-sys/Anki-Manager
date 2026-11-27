@@ -72,7 +72,7 @@ def build_field_prompt(model_name, main_field_value, current_fields, missing_fie
             f"모델: {model_name}\n"
             f"문장 및 정답 데이터: {current_fields}\n"
             f"누락된 필드: {missing_fields}\n\n"
-            f"지시: 해설(자연스러운 한국어 번역), 설명(정답 논리적 이유), 보기1~3(중복 없는 매력적인 오답)을 생성하여 JSON으로 반환하세요."
+            f"지시: 해설(자연스러운 한국어 번역), 보기1~3(중복 없는 매력적인 오답)을 생성하여 JSON으로 반환하세요."
         )
     return (
         f"모델: {model_name}\n"
@@ -217,9 +217,8 @@ class NoteCompleter:
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=NOTE_COMPLETOR_MAX_WORKERS) as executor:
             prompt_template = """
-            다음 단어 데이터 리스트에 대해, 뜻, 품사, 예문, 설명을 포함한 JSON 객체 리스트를 'vocab' 키에 담아 반환하세요.
+            다음 단어 데이터 리스트에 대해, 뜻, 품사, 예문을 포함한 JSON 객체 리스트를 'vocab' 키에 담아 반환하세요.
             이미 '뜻'이나 '단어' 정보가 있다면 이를 활용하여 내용을 완성하십시오.
-            특히 '설명' 필드는 의미의 미세한 차이나 뉘앙스를 한국어로 상세히 설명해야 합니다.
             
             [데이터]:
             {}
@@ -248,7 +247,7 @@ class NoteCompleter:
         notes: [{"id", "main", "current", "missing"}] → {id: {필드: 값}} (응답에 없는 노트는 빠진다)
         """
         if "Grammar" in model_name:
-            guide = "해설은 자연스러운 한국어 번역, 설명은 정답의 논리적 이유, 보기1~3은 정답과 겹치지 않는 매력적인 오답."
+            guide = "해설은 자연스러운 한국어 번역, 보기1~3은 정답과 겹치지 않는 매력적인 오답."
         elif model_name == "Chinese Sentence":
             guide = "뜻은 문장의 자연스러운 한국어 번역, 한어병음은 문장 전체의 성조 부호 포함 병음만 직접 작성."
         elif model_name == "Chinese Vocabulary":
@@ -256,7 +255,7 @@ class NoteCompleter:
         elif "Sentence" in model_name:
             guide = "해설은 문장의 자연스러운 한국어 번역만 직접 작성."
         else:
-            guide = "지침 규칙(뜻·품사·예문·설명 형식)을 그대로 따른다."
+            guide = "지침 규칙(뜻·품사·예문 형식)을 그대로 따른다."
         sys_inst = self.sys_instruct
         if model_name.startswith("Chinese"):
             from config import NOTE_COMPLETOR_ZH_SYS_INSTRUCT
@@ -304,12 +303,12 @@ def run_universal_field_completion(pbar=None):
             "all_fields": ["문장", "해설"]
         },
         MODEL_VOCAB: {
-            "triggers": ["뜻", "품사", "예문", "설명"],
-            "all_fields": ["단어", "뜻", "품사", "예문", "설명"]
+            "triggers": ["뜻", "품사", "예문"],
+            "all_fields": ["단어", "뜻", "품사", "예문"]
         },
         MODEL_GRAMMAR: {
-            "triggers": ["해설", "설명", "보기1", "보기2", "보기3"],
-            "all_fields": ["문장", "해설", "보기1", "보기2", "보기3", "정답", "설명"]
+            "triggers": ["해설", "보기1", "보기2", "보기3"],
+            "all_fields": ["문장", "해설", "보기1", "보기2", "보기3", "정답"]
         },
         MODEL_ZH_VOCAB: {
             "triggers": ["뜻", "한어병음", "품사", "예문"],
@@ -522,8 +521,7 @@ def run_note_completion(sentences_data, vocab_data, pbar=None, step_points=0, in
                 "뜻": v['뜻'], 
                 "품사": pos_tag, 
                 "유의어": "", 
-                "예문": v['예문'], 
-                "설명": v['설명']
+                "예문": v['예문'],
             }
             AnkiConnector.add_note(DECK_VOCAB, MODEL_VOCAB, fields, tags=[freq_tier])
             processed_vocab.append(word)

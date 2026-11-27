@@ -121,3 +121,7 @@ def test_main_relinks_even_when_cleanup_fails(monkeypatch):
     with pytest.raises(RuntimeError):
         nm.main()
     assert order == ["run", "relink"]
+
+
+def test_fields_query_excludes_explanation_for_vocab_and_grammar():
+    assert '"설명:"' not in nm.QUERIES["fields"]

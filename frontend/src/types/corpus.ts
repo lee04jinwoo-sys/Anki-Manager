@@ -8,7 +8,7 @@ export interface CollocationCandidate {
   trans_1: string
   example_2: string
   trans_2: string
-  explanation: string
+  explanation?: string
   frequency_score?: number | null
 }
 

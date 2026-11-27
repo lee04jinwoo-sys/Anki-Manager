@@ -283,7 +283,6 @@ def create_vocab_card(req: VocabCreateRequest) -> CardResponse:
     meaning = req.meaning.strip() if req.meaning else ""
     pos = req.pos.strip() if req.pos else ""
     example = clean_vocab_example(req.example.strip() if req.example else "")
-    explanation = req.explanation.strip() if req.explanation else ""
 
     # 1. AI Enrichment if needed
     if req.auto_enrich and (not meaning or not example):
@@ -298,8 +297,6 @@ def create_vocab_card(req: VocabCreateRequest) -> CardResponse:
                     pos = v.get("품사", "")
                 if not example:
                     example = clean_vocab_example(v.get("예문", ""))
-                if not explanation:
-                    explanation = v.get("설명", "")
         except Exception as e:
             logger.warning(f"AI vocab enrichment failed: {e}")
 
@@ -309,7 +306,6 @@ def create_vocab_card(req: VocabCreateRequest) -> CardResponse:
         "품사": pos,
         "유의어": "",  # STRICT ZERO-SYNONYM RULE!
         "예문": example,
-        "설명": explanation,
         "소리": ""
     }
 
@@ -375,7 +371,6 @@ def create_bulk_vocabs(req: VocabBulkCreateRequest) -> BulkCardResponse:
             meaning = item.meaning.strip() if item.meaning else ""
             pos = item.pos.strip() if item.pos else ""
             example = clean_vocab_example(item.example.strip() if item.example else "")
-            explanation = item.explanation.strip() if item.explanation else ""
 
             from backend.services.corpus_service import evaluate_expression_rank_and_tier
             _, freq_tier = evaluate_expression_rank_and_tier(norm_word)
@@ -389,7 +384,6 @@ def create_bulk_vocabs(req: VocabBulkCreateRequest) -> BulkCardResponse:
                     "품사": pos,
                     "유의어": "",
                     "예문": example,
-                    "설명": explanation,
                     "소리": ""
                 },
                 "tags": [freq_tier],
@@ -467,12 +461,11 @@ def create_grammar_card(req: GrammarCreateRequest) -> CardResponse:
         if d and d.lower() not in seen:
             seen.add(d.lower())
             distractors.append(d)
-    fields = {"문장": sentence, "정답": answer, "해설": (req.translation or "").strip(),
-              "설명": (req.explanation or "").strip(), "소리": ""}
+    fields = {"문장": sentence, "정답": answer, "해설": (req.translation or "").strip(), "소리": ""}
     for name, value in zip(GRAMMAR_OPTION_FIELDS, distractors[:3]):
         fields[name] = value
 
-    missing = [k for k in ["해설", "설명", *GRAMMAR_OPTION_FIELDS] if not fields.get(k)]
+    missing = [k for k in ["해설", *GRAMMAR_OPTION_FIELDS] if not fields.get(k)]
     if missing and req.auto_enrich:
         current = {k: v for k, v in fields.items() if v and k != "소리"}
         try:
@@ -491,8 +484,8 @@ def create_grammar_card(req: GrammarCreateRequest) -> CardResponse:
     options = [fields.get(k, "") for k in GRAMMAR_OPTION_FIELDS] + [answer]
     if any(not o for o in options) or len({o.lower() for o in options}) != 4:
         return CardResponse(success=False, error=f"선택지 네 개가 서로 다르게 채워지지 않았습니다: {options}")
-    if not fields["해설"] or not fields["설명"]:
-        return CardResponse(success=False, error="해설 또는 설명을 만들지 못했습니다.")
+    if not fields["해설"]:
+        return CardResponse(success=False, error="해설을 만들지 못했습니다.")
 
     data = {k: v for k, v in fields.items() if k != "소리"}
     try:
