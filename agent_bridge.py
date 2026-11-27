@@ -45,7 +45,7 @@ def bridge_add_items(items, enrich=True):
         elif 'Vocab' in model_type:
             deck, model = DECK_VOCAB, MODEL_VOCAB
             main_field = "단어"
-            all_fields = ["단어", "뜻", "품사", "유의어", "예문"]
+            all_fields = ["단어", "뜻", "품사", "예문"]
         elif 'Grammar' in model_type:
             deck, model = DECK_GRAMMAR, MODEL_GRAMMAR
             main_field = "문장"

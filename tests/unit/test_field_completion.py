@@ -8,7 +8,7 @@ CALLS: dict = {}  # 가짜 Gemini 호출 기록 (env fixture가 채운다)
 
 
 def _vocab(nid, word, **fields):
-    base = {"단어": word, "뜻": "", "품사": "v", "유의어": "", "예문": "", "사진": "", "소리": ""}
+    base = {"단어": word, "뜻": "", "품사": "v", "예문": "", "소리": ""}
     base.update(fields)
     return {"noteId": nid, "modelName": "English Vocabulary", "fields": {k: {"value": v} for k, v in base.items()}}
 

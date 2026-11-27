@@ -467,12 +467,11 @@ class CorpusService:
             # 3. Examples: plain English joined by " ||| " (translations go to the sentence cards)
             examples_html = format_promote_examples(req.example_1, req.example_2)
 
-            # 4. Update Note Fields (Strict Zero-Synonym Rule)
+            # 4. Update Note Fields
             update_fields = {
                 "단어": req.new_chunk,
                 "뜻": req.meaning,
                 "품사": req.pos,
-                "유의어": "",
                 "예문": examples_html,
                 "소리": sound_tag or ""
             }

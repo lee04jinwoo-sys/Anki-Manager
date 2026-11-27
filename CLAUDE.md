@@ -8,10 +8,9 @@
 카드를 보강(Enrichment)할 때는 `config.py`의 `NOTE_COMPLETOR_SYS_INSTRUCT`에 정의된 규칙을 엄격히 따릅니다.
 
 ### 1. English Vocabulary (단어)
+- **필드 구성:** 단어, 뜻, 품사, 예문, 소리 (`유의어`·`사진`·`설명` 필드 제거됨)
 - **뜻 필드:** 슬래시(/) 금지. 쉼표와 공백으로 구분합니다 (예: '비판하다, 비난하다').
 - **품사 필드:** n, v, adj, adv, idiom 중 하나 (복합 품사는 'n, v'). 숙어/구/연어는 모두 idiom.
-- **유의어 필드:** 항상 비웁니다 (게이트웨이 `card_service.py`가 강제).
-- **설명 필드:** 제거됨 (템플릿·노트 타입·보강 프롬프트 모두 제외).
 - 이 룰은 Shadowing Player의 사전 조회 프롬프트(`backend/routers/dict.py`)와 `backend/anki_core/config.py`에 사본이 있으니, 바꿀 때 같이 바꿉니다.
 
 ### 2. English Sentence (문장)

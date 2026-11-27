@@ -5,8 +5,8 @@ from core.completer import build_field_prompt
 from scripts import export_sft_dataset as ex
 
 def vocab_note(note_id=1, **over):
-    fields = {"단어": "locate", "뜻": "위치를 찾아내다, ~에 두다", "품사": "v", "유의어": "",
-              "예문": "Rescue planes are trying to locate the missing people.", "사진": "",
+    fields = {"단어": "locate", "뜻": "위치를 찾아내다, ~에 두다", "품사": "v",
+              "예문": "Rescue planes are trying to locate the missing people.",
               "소리": "[sound:google-abc.mp3]"}
     fields.update(over)
     return {"noteId": note_id, "modelName": "English Vocabulary",

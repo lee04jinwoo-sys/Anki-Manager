@@ -520,7 +520,6 @@ def run_note_completion(sentences_data, vocab_data, pbar=None, step_points=0, in
                 "단어": word, 
                 "뜻": v['뜻'], 
                 "품사": pos_tag, 
-                "유의어": "", 
                 "예문": v['예문'],
             }
             AnkiConnector.add_note(DECK_VOCAB, MODEL_VOCAB, fields, tags=[freq_tier])

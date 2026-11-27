@@ -1,7 +1,7 @@
 """일괄 등록: AnkiConnect addNotes는 하나라도 실패하면 전부 롤백한다. 중복 1개가 나머지를 막으면 안 된다."""
 import pytest
 
-from backend.schemas.cards import SentenceBulkCreateRequest, SentenceItem, VocabBulkCreateRequest, VocabItem
+from backend.schemas.cards import SentenceBulkCreateRequest, SentenceItem, VocabBulkCreateRequest, VocabCreateRequest, VocabItem
 from backend.services import card_service
 from integrations.anki_connect import AnkiConnector
 
@@ -65,3 +65,19 @@ def test_one_duplicate_does_not_block_other_vocab(anki):
     res = card_service.create_bulk_vocabs(req)
     assert res.count == 1 and res.skipped == 1
     assert "walk" in f.existing
+
+
+def test_vocab_cards_omit_removed_fields(monkeypatch):
+    added = []
+    monkeypatch.setattr(AnkiConnector, "add_note", classmethod(lambda cls, **kw: added.append(kw["fields"]) or 1))
+    monkeypatch.setattr(card_service.LinkManager, "index_single_vocab", classmethod(lambda cls, *a: None))
+    res = card_service.create_vocab_card(
+        VocabCreateRequest(word="walk", meaning="걷다", pos="v", example="I walk.", auto_enrich=False, generate_audio=False)
+    )
+    assert res.success
+    assert set(added[0].keys()) == {"단어", "뜻", "품사", "예문", "소리"}
+
+    bulk_notes = []
+    monkeypatch.setattr(card_service, "add_notes_skipping_failures", lambda notes: bulk_notes.extend(notes) or [2])
+    card_service.create_bulk_vocabs(VocabBulkCreateRequest(items=[VocabItem(word="walk")], generate_audio=False))
+    assert set(bulk_notes[0]["fields"].keys()) == {"단어", "뜻", "품사", "예문", "소리"}

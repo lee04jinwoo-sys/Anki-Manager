@@ -304,7 +304,6 @@ def create_vocab_card(req: VocabCreateRequest) -> CardResponse:
         "단어": norm_word,
         "뜻": meaning,
         "품사": pos,
-        "유의어": "",  # STRICT ZERO-SYNONYM RULE!
         "예문": example,
         "소리": ""
     }
@@ -382,7 +381,6 @@ def create_bulk_vocabs(req: VocabBulkCreateRequest) -> BulkCardResponse:
                     "단어": norm_word,
                     "뜻": meaning,
                     "품사": pos,
-                    "유의어": "",
                     "예문": example,
                     "소리": ""
                 },

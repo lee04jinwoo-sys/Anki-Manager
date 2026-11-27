@@ -563,9 +563,6 @@ NOTE_TYPES_CONFIG = {
                 "Front": """<div class="title">
     {{뜻}} <span class="pos-raw" data-pos="{{품사}}"></span>
   </div>
-  <div class="synonyms-box" data-synonyms="{{유의어}}"></div>
-
-  <div class="photo">{{사진}}</div>
 
   
 <script>
@@ -643,8 +640,6 @@ NOTE_TYPES_CONFIG = {
 <div class=\"title\">
   {{뜻}} <span class=\"pos-raw\" data-pos=\"{{품사}}\"></span>
 </div>
-<div class=\"synonyms-box\" data-synonyms=\"{{유의어}}\"></div>
-<div class=\"photo\">{{사진}}</div>
 
 <hr>
 <div class=\"word\">{{단어}} {{소리}}</div>
@@ -672,7 +667,6 @@ NOTE_TYPES_CONFIG = {
                 "Front": """<div class=\"title\">
     {{단어}}{{소리}} <span class=\"pos-raw\" data-pos=\"{{품사}}\"></span>
   </div>
-<div class=\"synonyms-box\" data-synonyms=\"{{유의어}}\"></div>
   
 <script>
 (function(){
@@ -743,8 +737,6 @@ NOTE_TYPES_CONFIG = {
 <div class=\"title\">
   {{단어}}{{소리}} <span class=\"pos-raw\" data-pos=\"{{품사}}\"></span>
 </div>
-<div class=\"synonyms-box\" data-synonyms=\"{{유의어}}\"></div>
-<div class=\"photo\">{{사진}}</div>
 
 <hr>
 <div class=\"word\">{{뜻}}</div>
